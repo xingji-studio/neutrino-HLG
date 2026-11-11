@@ -1,0 +1,92 @@
+const { chromium } = require('playwright-core');
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const root = path.resolve(__dirname, '../src/HLG.Host/wwwroot');
+const server = http.createServer((req, res) => {
+  const name = req.url === '/' ? 'index.html' : decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '');
+  const file = path.resolve(root, name);
+  if (!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
+  const mime = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css' }[path.extname(file)] || 'application/octet-stream';
+  fs.readFile(file, (err, body) => { if(err){res.writeHead(404).end();return;}res.writeHead(200,{'Content-Type':mime});res.end(body); });
+});
+(async()=>{
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const browser=await chromium.launch({executablePath:process.env.HLG_TEST_BROWSER||'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',headless:true});
+  try {
+    const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+    const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    const a={name:'A',models:[{name:'same',configured:true,intensities:['Low','High']}]};
+    const b={name:'B',models:[{name:'same',configured:true,intensities:['Medium','Max']}]};
+    const c={name:'C',models:[{name:'full',configured:true,intensities:['Low','Medium','High','Max','Ultra']}]};
+    let catalog={providers:[a,b],selection:{provider:'B',model:'same',intensity:'Max'}};
+    let unavailable=false;const sent=[];
+    await page.route('**/api/**',async route=>{
+      const url=new URL(route.request().url());let status=200,data={};
+      if(url.pathname==='/api/status')data={desktop:'C:\\Desktop',machine:'TEST'};
+      else if(url.pathname==='/api/apps')data=[];
+      else if(url.pathname==='/api/neutrino/models'){if(unavailable){status=503;data={detail:'模型配置不可用'};}else data=catalog;}
+      else if(url.pathname==='/api/tasks'&&route.request().method()==='POST'){sent.push(route.request().postDataJSON());data={key:'test-key'};}
+      else if(url.pathname==='/api/tasks/test-key')data={messages:[],busy:false};
+      await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
+    });
+    await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.waitForFunction(()=>document.querySelectorAll('#model option').length===2);
+    assert.equal(await page.locator('#model').inputValue(),'1');
+    assert.equal(await page.locator('#intensity-label').textContent(),'极高');
+    await page.locator('#prompt').fill('测试任务');await page.locator('#settings').click();
+    assert.equal(await page.locator('#intensity-stops .pro-slider-stop').count(),2);
+    assert.equal(await page.locator('#intensity-ticks button[aria-pressed="true"]').textContent(),'极高');
+    assert.equal(await page.locator('#settings-panel').evaluate(el=>el.classList.contains('is-max')),true);
+    const geometry=await page.locator('#intensity-slider').evaluate(el=>({height:getComputedStyle(el).height,track:getComputedStyle(el.querySelector('.pro-slider-track')).height,trackColor:getComputedStyle(el.querySelector('.pro-slider-track')).backgroundColor,range:getComputedStyle(el.querySelector('input')).height,theme:getComputedStyle(document.documentElement).getPropertyValue('--theme').trim()}));
+    assert.deepEqual(geometry,{height:'40px',track:'24px',trackColor:'rgb(69, 69, 71)',range:'40px',theme:'#45ACD7'});
+    catalog={providers:[a,b,c],selection:{provider:'B',model:'same',intensity:'Max'}};
+    await page.locator('#settings').click();
+    await Promise.all([page.waitForResponse('**/api/neutrino/models'),page.locator('#settings').click()]);
+    await page.locator('#model').selectOption('2');
+    assert.equal(await page.locator('#intensity-ticks button').count(),5);
+    await page.setViewportSize({width:320,height:568});
+    const withinPanel=await page.locator('#intensity-ticks').evaluate(el=>{const panel=el.closest('.settings-panel').getBoundingClientRect();return [...el.children].every(button=>{const rect=button.getBoundingClientRect();return rect.left>=panel.left&&rect.right<=panel.right;});});
+    assert.equal(withinPanel,true);
+    await page.locator('#intensity-ticks').getByRole('button',{name:'中',exact:true}).click();
+    assert.equal(await page.locator('#intensity-label').textContent(),'中');
+    assert.equal(await page.locator('#intensity').getAttribute('aria-valuetext'),'中');
+    assert.equal(await page.locator('#intensity-slider').evaluate(el=>el.style.getPropertyValue('--pro-slider-position')),'0.25');
+    assert.equal(await page.locator('#intensity-stops .is-filled').count(),2);
+    await page.locator('#intensity-ticks').getByRole('button',{name:'超高'}).click();
+    assert.equal(await page.locator('#settings-panel').evaluate(el=>el.classList.contains('is-max')),true);
+    const maxGradient=await page.locator('.pro-slider-fill').evaluate(el=>getComputedStyle(el).backgroundImage);
+    assert.match(maxGradient,/rgb\(52, 127, 246\)/);
+    assert.match(maxGradient,/rgb\(164, 90, 248\)/);
+    assert.equal(await page.locator('#intensity-label').evaluate(el=>getComputedStyle(el).color),'rgb(189, 168, 255)');
+    await page.setViewportSize({width:390,height:844});
+    await page.locator('#model').selectOption('0');await page.locator('#intensity-ticks').getByRole('button',{name:'低',exact:true}).click();
+    assert.equal(await page.locator('#intensity-label').textContent(),'低');
+    assert.equal(await page.locator('.pro-slider-fill').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(69, 172, 215)');
+    assert.equal(await page.locator('#intensity-label').evaluate(el=>getComputedStyle(el).color),'rgb(69, 172, 215)');
+    catalog={providers:[b,a],selection:{provider:'B',model:'same',intensity:'Max'}};
+    await page.locator('#settings').click();
+    await Promise.all([page.waitForResponse('**/api/neutrino/models'),page.locator('#settings').click()]);
+    assert.equal(await page.locator('#model').inputValue(),'1');
+    assert.equal(await page.locator('#intensity-label').textContent(),'低');
+    catalog={providers:[b],selection:{provider:'B',model:'same',intensity:'Max'}};
+    await page.locator('#send').click();
+    await page.waitForFunction(()=>document.querySelector('#toast').textContent.includes('重新选择'));
+    assert.equal(sent.length,0);
+    await Promise.all([page.waitForResponse('**/api/neutrino/models'),page.locator('#settings').click()]);
+    await page.locator('#model').selectOption('0');
+    await page.locator('#intensity').fill('1');
+    await Promise.all([page.waitForResponse(r=>r.url().endsWith('/api/tasks')&&r.request().method()==='POST'),page.locator('#send').click()]);
+    assert.deepEqual(sent[0].selection,{provider:'B',model:'same',intensity:'Max'});
+    unavailable=true;
+    await page.locator('#prompt').focus();
+    await Promise.all([page.waitForResponse('**/api/neutrino/models'),page.locator('#settings').click()]);
+    await page.waitForFunction(()=>document.getElementById('model').disabled);
+    assert.match(await page.locator('#model').textContent(),/无法读取/);
+    assert.equal(await page.locator('#intensity-ticks button').count(),0);
+    assert.equal(await page.locator('#intensity-slider').evaluate(el=>el.classList.contains('is-disabled')),true);
+    assert.deepEqual(errors,[]);
+    console.log('手机端模型默认值、刷新、选择变更和提交测试通过。');
+  } finally { await browser.close();server.close(); }
+})().catch(error=>{console.error(error);server.close();process.exitCode=1;});

@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><UseWindowsForms>true</UseWindowsForms></PropertyGroup>
+  <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /><Compile Include="../../src/HLG.Host/Windows.cs" Link="Windows.cs" /><Compile Include="../../src/HLG.Host/AppIcons.cs" Link="AppIcons.cs" /><Compile Include="../../src/HLG.Host/AppCatalog.cs" Link="AppCatalog.cs" /><Compile Include="../../src/HLG.Host/AppUsage.cs" Link="AppUsage.cs" /><Compile Include="../../src/HLG.Host/AppService.cs" Link="AppService.cs" /><Compile Include="../../src/HLG.Host/ShellApps.cs" Link="ShellApps.cs" /><Compile Include="../../src/HLG.Host/ScreenSession.cs" Link="ScreenSession.cs" /></ItemGroup>
+</Project>

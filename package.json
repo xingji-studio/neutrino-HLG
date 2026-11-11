@@ -1,0 +1,21 @@
+{
+  "name": "@xingjisoft/neutrino-hlg",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "prepare:terminal": "node scripts/copy-terminal-assets.cjs",
+    "postinstall": "npm run prepare:terminal",
+    "test:remote-ui": "node tests/remote-ui.cjs",
+    "test:model-ui": "node tests/model-ui.cjs",
+    "test:conversation-ui": "node tests/conversation-ui.cjs",
+    "test:app-list-ui": "node tests/app-list-ui.cjs",
+    "test:back-ui": "node tests/back-ui.cjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.54.1"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0"
+  }
+}

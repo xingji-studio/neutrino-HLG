@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111214"><title>Neutrino HLG</title><link rel="stylesheet" href="vendor/xterm.css"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="theme.css"></head>
+<body>
+<main id="app">
+  <header><div><div class="eyebrow"><span class="brand-mark">✳</span> NEUTRINO HLG</div><h1 id="title">你的电脑，<br><span>触手可及。</span></h1></div><button id="connection" class="connection"><i></i><span>连接中</span></button></header>
+  <div id="toolbar" class="toolbar hidden"><button id="back" aria-label="返回"><svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m7-7-7 7 7 7"/></svg></button><div id="page-title"></div></div>
+  <section id="home"><div class="section-label"><span>你的应用</span><span class="label-right">APPLICATIONS <svg class="arrow-icon label-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M8 18h10V8"/></svg></span></div><div id="grid" class="grid"></div><div class="endmark"><span></span> 随时待命 <span></span></div></section>
+  <section id="page" class="hidden"></section>
+  <div id="composer" class="composer">
+    <div id="composer-controls" class="composer-controls hidden"><button id="directory">⌁ <span>桌面</span> <svg class="arrow-icon directory-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button><button id="settings">⚙ <span id="model-short">模型设置</span></button></div>
+    <div class="composer-inner"><textarea id="prompt" rows="1" placeholder="输入以唤起智能体"></textarea><button id="send" class="send hidden" aria-label="发送"><svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-7 7 7-7 7 7"/></svg></button></div>
+    <div id="settings-panel" class="settings-panel hidden">
+      <div class="pro-preset-heading"><span>对话模型</span><strong id="intensity-label"></strong></div>
+      <label>模型<select id="model"></select></label>
+      <label class="pro-slider-label" for="intensity">思考强度</label>
+      <div id="intensity-slider" class="pro-preset-slider"><div class="pro-slider-track" aria-hidden="true"><div class="pro-slider-fill"></div></div><div id="intensity-stops" class="pro-slider-stops" aria-hidden="true"></div><input id="intensity" type="range" min="0" max="0" step="1" value="0" aria-label="思考强度"></div>
+      <div id="intensity-ticks" class="pro-preset-ticks"></div>
+      <label>模式<select id="mode"><option value="standard">标准模式</option><option value="ptc">PTC 模式</option><option value="fast">快速模式</option><option value="fast_dag">极速模式</option></select></label>
+    </div>
+  </div>
+</main>
+<section id="remote-view" class="remote-view hidden" aria-label="远程画面">
+  <div id="remote-canvas" class="remote-canvas"><img id="remote-image" alt="远程电脑画面" draggable="false"><div id="remote-cursor" class="remote-cursor hidden" aria-hidden="true"><svg class="cursor-pointer" viewBox="0 0 24 30"><path d="M2 1 2 23 8 17 12 27 16 25 12 15 21 15Z"/></svg><svg class="cursor-edge" viewBox="0 0 20 12"><path d="M19 6 2 1 2 11Z"/></svg></div><div id="remote-status" class="remote-status">正在连接画面…</div></div>
+  <div class="remote-side"><div id="trackpad" class="trackpad"><div class="trackpad-hint">触控板<span>轻点 · 点击　双指 · 滚动</span></div><div class="trackpad-buttons"><button id="mouse-left" aria-label="鼠标左键">左键</button><button id="mouse-right" aria-label="鼠标右键">右键</button></div></div><div id="remote-keyboard" class="remote-keyboard hidden"></div></div>
+  <div id="remote-float" class="remote-float"><div id="remote-menu" class="remote-menu hidden"><button id="remote-back">返回</button><button id="remote-clipboard">剪切板</button><button id="remote-keyboard-toggle">键盘</button><button id="remote-special-toggle">特殊按键</button></div><div id="remote-special" class="remote-special hidden"></div><button id="remote-ball" class="remote-ball" aria-label="远控工具">✳</button></div>
+  <div class="remote-rotate">建议横握手机以使用远控</div>
+</section>
+<div id="clipboard-dialog" class="overlay hidden"><div class="dialog"><h2>剪切板</h2><p>在此粘贴手机文本，或从电脑复制文本。</p><textarea id="clipboard-text" rows="5" aria-label="剪切板文本"></textarea><div class="clipboard-actions"><button id="clipboard-read">从电脑复制</button><button id="clipboard-copy">复制到手机</button><button id="clipboard-paste">粘贴到电脑</button><button id="clipboard-close">关闭</button></div></div></div>
+<div id="remote-text-dialog" class="overlay hidden"><div class="dialog"><h2>输入文本</h2><p>使用手机输入法输入中文或其他文字。</p><textarea id="remote-text" rows="4" aria-label="输入文本"></textarea><div class="clipboard-actions"><button id="remote-text-send">发送</button><button id="remote-text-close">关闭</button></div></div></div>
+<div id="pair" class="overlay hidden"><form id="pair-form" class="dialog"><div class="dialog-icon">✳</div><h2>连接你的电脑</h2><p>输入电脑端显示的六位配对码。</p><input id="pair-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="······" required><button class="primary">连接设备</button><p id="pair-error" class="error"></p></form></div>
+<div id="toast" role="status"></div><script src="vendor/xterm.js" defer></script><script src="vendor/addon-fit.js" defer></script><script src="app.js" defer></script><script src="remote.js" defer></script></body></html>

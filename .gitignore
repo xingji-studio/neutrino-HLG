@@ -1,0 +1,6 @@
+**/bin/
+**/obj/
+node_modules/
+*.pfx
+*.p12
+src/HLG.Host/wwwroot/vendor/

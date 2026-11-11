@@ -1,0 +1,100 @@
+:root { --theme: #45ACD7; }
+
+.arrow-icon { display: block; width: 18px; height: 18px; flex: none; }
+.window-icon-fallback { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.window-icon { position: absolute; display: block; width: 27px; height: 27px; object-fit: contain; opacity: 0; }
+.window-icon.is-loaded { opacity: 1; }
+.app-icon { position: relative; }
+.app-icon-image { position: absolute; width: 70%; height: 70%; object-fit: contain; opacity: 0; }
+.app-icon-image.is-loaded { opacity: 1; }
+.remote-cursor { position: absolute; left: 0; top: 0; z-index: 2; width: 22px; height: 28px; pointer-events: none; }
+.remote-cursor svg { display: block; width: 100%; height: 100%; fill: white; stroke: #111; stroke-width: 1.2; stroke-linejoin: round; filter: drop-shadow(0 1px 2px #0009); }
+.remote-cursor .cursor-edge { display: none; }
+.remote-cursor.is-edge { width: 22px; height: 13px; }
+.remote-cursor.is-edge .cursor-pointer { display: none; }
+.remote-cursor.is-edge .cursor-edge { display: block; }
+.toolbar button, .send { display: grid; place-items: center; }
+.label-right { display: flex; align-items: center; gap: 6px; }
+.label-arrow { width: 15px; height: 15px; color: var(--theme); }
+#directory { display: flex; align-items: center; gap: 5px; }
+#directory span { overflow: hidden; text-overflow: ellipsis; }
+.directory-arrow { width: 14px; height: 14px; }
+.terminal-keys button { display: flex; align-items: center; justify-content: center; }
+.remote-keyboard button .arrow-icon { width: 16px; height: 16px; margin: auto; }
+.settings-panel select, .terminal-shell select {
+  appearance: none; -webkit-appearance: none; padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23adb2b8' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-size: 16px 16px; background-position: right 9px center;
+}
+
+.brand-mark, .dialog-icon, .label-arrow, .row-icon,
+.app-icon, .app:nth-child(2) .app-icon, .app:nth-child(3) .app-icon, .app:nth-child(4) .app-icon { color: var(--theme); }
+.connection i, .primary, .remote-ball, .remote-menu button.active,
+.remote-special button.active, .remote-keyboard button.active { background: var(--theme); }
+.primary, .remote-ball, .remote-menu button.active,
+.remote-special button.active, .remote-keyboard button.active { color: #10232b; }
+
+/* Neutrino's model-intensity slider, retaining its geometry and interaction states. */
+.settings-panel {
+  width: min(390px, calc(100vw - 32px)); max-height: min(560px, 65dvh); overflow-y: auto;
+  padding: 18px; border: 1px solid rgba(255, 255, 255, .18); border-radius: 16px;
+  background: #232324; box-shadow: 0 18px 48px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .35);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+.pro-preset-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; font-size: 13px; }
+.pro-preset-heading strong { color: var(--theme); font-size: 14px; font-weight: 500; }
+#intensity-label { float: none; color: var(--theme); }
+.settings-panel .pro-slider-label { display: block; color: #adb2b8; font-size: 11px; margin-bottom: 8px; }
+.pro-preset-slider { position: relative; height: 40px; --pro-slider-position: 0; }
+.pro-preset-slider.is-disabled { opacity: .5; }
+.pro-slider-track { position: absolute; top: 8px; right: 2px; left: 2px; height: 24px; border-radius: 999px; background: #454547; overflow: hidden; pointer-events: none; }
+.pro-slider-fill { width: calc(12px + (100% - 24px) * var(--pro-slider-position)); height: 100%; background: var(--theme); }
+.pro-slider-stops { position: absolute; top: 18px; right: 14px; left: 14px; height: 4px; pointer-events: none; }
+.pro-slider-stop { position: absolute; width: 4px; height: 4px; transform: translateX(-50%); border-radius: 50%; background: rgba(255, 255, 255, .18); }
+.pro-slider-stop.is-filled { background: rgba(255, 255, 255, .35); }
+#intensity { position: relative; display: block; width: 100%; height: 40px; margin: 0; padding: 0; -webkit-appearance: none; appearance: none; border: 0; border-radius: 999px; background: transparent; cursor: pointer; }
+#intensity::-webkit-slider-runnable-track { height: 24px; border: 0; background: transparent; }
+#intensity::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 28px; height: 28px; margin-top: -2px; border: 0; border-radius: 50%; background: #fff; }
+#intensity::-moz-range-track { height: 24px; border: 0; background: transparent; }
+#intensity::-moz-range-progress { background: transparent; }
+#intensity::-moz-range-thumb { width: 28px; height: 28px; border: 0; border-radius: 50%; background: #fff; }
+#intensity:focus-visible { outline-offset: 2px; }
+#intensity:disabled { cursor: default; }
+.pro-preset-ticks { position: relative; height: 24px; margin: 6px 14px 16px; }
+.pro-preset-ticks button { position: absolute; transform: translateX(-50%); border: 0; background: transparent; color: #81858c; font-size: 11px; line-height: 16px; padding: 4px; white-space: nowrap; cursor: pointer; }
+.pro-preset-ticks button[aria-pressed="true"] { color: var(--theme); }
+.pro-preset-ticks button:disabled { cursor: default; }
+.settings-panel.is-max .pro-slider-fill { background: linear-gradient(100deg, #347ff6 5%, #6075ff 50%, #a45af8); }
+.settings-panel.is-max .pro-slider-track { box-shadow: 0 0 14px rgba(132, 99, 255, .22); }
+.settings-panel.is-max .pro-preset-heading strong,
+.settings-panel.is-max .pro-preset-ticks button[aria-pressed="true"] { color: #bda8ff; }
+.settings-panel.is-max #intensity-label { color: #bda8ff; }
+@media (min-width: 701px) { .settings-panel { width: min(390px, calc(100vw - 48px)); } }
+
+body.conversation-mode header { margin-bottom: 26px; }
+body.conversation-mode #app { padding-bottom: calc(200px + env(safe-area-inset-bottom)); }
+body.conversation-mode #toolbar { margin-top: 0; }
+.conversation-mode #directory:disabled { opacity: .65; cursor: default; }
+.chat-status { color: #9ba5a5; font-size: 11px; text-align: center; margin: 0 0 22px; line-height: 1.5; }
+.chat-log { display: flex; flex-direction: column; gap: 18px; }
+.chat-message { display: flex; width: 100%; }
+.chat-message-user { justify-content: flex-end; }
+.chat-message-assistant { justify-content: flex-start; }
+.chat-content { display: flex; flex-direction: column; align-items: flex-start; max-width: min(86%, 470px); min-width: 0; }
+.chat-message-user .chat-content { align-items: flex-end; }
+.chat-author { color: #969e9f; font-size: 10px; line-height: 1; margin: 0 5px 7px; }
+.chat-bubble { border: 1px solid rgba(255,255,255,.07); border-radius: 18px 18px 18px 5px; background: #292d2f; color: #f2f5f5; padding: 12px 15px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-message-user .chat-bubble { border-color: transparent; border-radius: 18px 18px 5px 18px; background: var(--theme); color: #10232b; }
+.chat-bubble.is-streaming { border-color: rgba(69,172,215,.35); }
+.chat-thinking, .chat-summary, .chat-empty { color: #99a2a1; font-size: 12px; line-height: 1.6; }
+.chat-thinking, .chat-empty { padding: 4px 5px; }
+.chat-summary { padding: 10px 12px; border-radius: 12px; background: #1f2222; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-tool { align-self: flex-start; width: min(86%, 470px); border: 1px solid #383f40; background: #1c2020; border-radius: 12px; color: #bac4c3; font-size: 12px; }
+.chat-tool summary { cursor: pointer; padding: 10px 12px; }
+.chat-tool pre, .approval-card pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; font: 12px/1.5 ui-monospace, monospace; }
+.chat-tool pre { padding: 0 12px 10px; }
+.approval-card { background: #252a2b; border: 1px solid rgba(69,172,215,.35); border-radius: 15px; padding: 14px; margin-bottom: 18px; font-size: 13px; }
+.approval-card pre { color: #c8d0d0; }
+.approval-actions { display: flex; gap: 8px; }
+.approval-actions button { flex: 1; border-radius: 10px; padding: 10px; font-weight: 600; }
+.approval-reject { background: transparent; border: 1px solid #667171; color: #e3eaea; }
