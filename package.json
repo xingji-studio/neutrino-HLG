@@ -1,10 +1,41 @@
 {
   "name": "@xingjisoft/neutrino-hlg",
-  "private": true,
   "version": "0.1.0",
+  "description": "Windows 主机与手机 Web 端的 Neutrino 远程控制系统",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xingji-studio/neutrino-HLG.git"
+  },
+  "homepage": "https://github.com/xingji-studio/neutrino-HLG#readme",
+  "bugs": {
+    "url": "https://github.com/xingji-studio/neutrino-HLG/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "win32"
+  ],
+  "bin": {
+    "neutrino-hlg": "scripts/neutrino-hlg.cjs"
+  },
+  "files": [
+    "scripts/",
+    "src/HLG.Host/*.cs",
+    "src/HLG.Host/*.csproj",
+    "src/HLG.Host/*.manifest",
+    "src/HLG.Host/wwwroot/*.html",
+    "src/HLG.Host/wwwroot/*.js",
+    "src/HLG.Host/wwwroot/*.css",
+    "DEVELOPMENT.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "prepare:terminal": "node scripts/copy-terminal-assets.cjs",
-    "postinstall": "npm run prepare:terminal",
+    "postinstall": "node scripts/copy-terminal-assets.cjs",
     "test:remote-ui": "node tests/remote-ui.cjs",
     "test:model-ui": "node tests/model-ui.cjs",
     "test:conversation-ui": "node tests/conversation-ui.cjs",
