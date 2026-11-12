@@ -4,13 +4,30 @@ let toastTimer;
 let terminalSession = null;
 let appsGeneration = 0;
 let filesGeneration = 0;
+const trustStorageKey = 'hlg.trusted-device.v1';
+let trustRestoration = null, trustCandidate = null, previousTrustToken = null;
 let detailTimer, detailGeneration=0, detailRefresh=null, detailPrevious=null, detailDirty={model:false,mode:false}, homeDraft='';
 const conversationDrafts=new Map();
 function closeTerminal() { if (!terminalSession) return; const session=terminalSession; terminalSession=null; session.observer?.disconnect(); session.socket?.close(); session.term?.dispose(); }
 function toast(message) { $('toast').textContent = message; $('toast').classList.add('visible'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('visible'), 3500); }
+function readTrustedToken() { try { return localStorage.getItem(trustStorageKey); } catch { return null; } }
+async function restoreTrust() {
+  if(trustRestoration)return trustRestoration;
+  const token=readTrustedToken();if(!token)return false;
+  trustRestoration=(async()=>{
+    try {
+      const response=await fetch('/api/trust/restore',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
+      if(response.status===401&&readTrustedToken()===token){try{localStorage.removeItem(trustStorageKey);}catch{}}
+      return response.ok;
+    } catch { return false; }
+  })();
+  try{return await trustRestoration;}finally{trustRestoration=null;}
+}
 async function api(path, options = {}) {
-  const response = await fetch('/api' + path, { credentials: 'same-origin', ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers } });
-  if (response.status === 401) { $('pair').classList.remove('hidden'); throw new Error('请先配对'); }
+  const request={ credentials: 'same-origin', ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers } };
+  let response = await fetch('/api' + path, request);
+  if(response.status===401&&path!=='/pair'&&await restoreTrust())response=await fetch('/api'+path,request);
+  if (response.status === 401) { if(path==='/pair')throw new Error('配对码错误');$('pair').classList.remove('hidden'); throw new Error('请先配对'); }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || data.detail || `请求失败 (${response.status})`);
   return data;
@@ -213,9 +230,31 @@ function renderIntensity() {
 function updateLevels(preferred) { const m=state.models[Number($('model').value)]; state.levels=m?.intensities||[]; $('intensity').disabled=!state.levels.length; $('intensity').max=String(Math.max(0,state.levels.length-1));const index=state.levels.indexOf(preferred);const fallback=state.levels.indexOf('High');$('intensity').value=String(index>=0?index:fallback>=0?fallback:0);$('model-short').textContent=m?.name||'模型不可用';renderIntensity(); }
 async function loadApps() { const generation=++appsGeneration;try { const apps=await api('/apps');if(generation===appsGeneration&&Array.isArray(apps)){state.apps=apps;renderApps();} } catch(e) { if(generation===appsGeneration)toast('无法读取应用：'+e.message); } }
 async function init() { try { const status=await api('/status'); state.cwd=status.desktop; $('connection').querySelector('span').textContent=status.machine; } catch(e) { if(e.message!=='请先配对') toast(e.message); return; } await loadApps(); await loadModels(); }
-$('pair-form').onsubmit=async e=>{e.preventDefault();try{await api('/pair',{method:'POST',body:JSON.stringify({code:$('pair-code').value})});$('pair').classList.add('hidden');$('pair-error').textContent='';await init();}catch(err){$('pair-error').textContent=err.message;}};
+$('pair-form').onsubmit=async e=>{e.preventDefault();try{await api('/pair',{method:'POST',body:JSON.stringify({code:$('pair-code').value})});$('pair').classList.add('hidden');$('pair-error').textContent='';$('pair-code').value='';previousTrustToken=readTrustedToken();trustCandidate=null;$('trust-error').textContent='';$('trust-dialog').classList.remove('hidden');}catch(err){$('pair-error').textContent=err.message;}};
+function declineTrust() {
+  if(trustCandidate&&readTrustedToken()===trustCandidate){try{if(previousTrustToken)localStorage.setItem(trustStorageKey,previousTrustToken);else localStorage.removeItem(trustStorageKey);}catch{}}
+  trustCandidate=null;previousTrustToken=null;$('trust-dialog').classList.add('hidden');void init();
+}
+$('trust-decline').onclick=declineTrust;
+$('trust-accept').onclick=async()=>{
+  $('trust-error').textContent='';
+  try {
+    if(!trustCandidate){
+      const random=new Uint8Array(32);crypto.getRandomValues(random);
+      const token=Array.from(random,b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
+      localStorage.setItem(trustStorageKey,token);trustCandidate=token;
+    }
+  } catch { $('trust-error').textContent='无法保存设备信任，请检查浏览器存储权限。';return; }
+  $('trust-accept').disabled=true;$('trust-decline').disabled=true;
+  try {
+    await api('/trust',{method:'POST',body:JSON.stringify({token:trustCandidate})});
+    trustCandidate=null;previousTrustToken=null;$('trust-dialog').classList.add('hidden');await init();
+  } catch(e){$('trust-error').textContent=e.message;}
+  finally{$('trust-accept').disabled=false;$('trust-decline').disabled=false;}
+};
 $('prompt').addEventListener('focus',()=>{$('composer').classList.add('expanded');$('composer-controls').classList.remove('hidden');$('send').classList.remove('hidden');});
 function navigateBack() {
+  if(!$('trust-dialog').classList.contains('hidden')){if(!$('trust-decline').disabled)declineTrust();return;}
   if(!$('pair').classList.contains('hidden')){toast('请先完成配对');return;}
   if(!$('remote-text-dialog').classList.contains('hidden')){$('remote-text-dialog').classList.add('hidden');return;}
   if(!$('clipboard-dialog').classList.contains('hidden')){$('clipboard-dialog').classList.add('hidden');return;}

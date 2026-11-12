@@ -40,7 +40,8 @@
     "test:model-ui": "node tests/model-ui.cjs",
     "test:conversation-ui": "node tests/conversation-ui.cjs",
     "test:app-list-ui": "node tests/app-list-ui.cjs",
-    "test:back-ui": "node tests/back-ui.cjs"
+    "test:back-ui": "node tests/back-ui.cjs",
+    "test:trust-ui": "node tests/trust-ui.cjs"
   },
   "devDependencies": {
     "playwright-core": "1.54.1"

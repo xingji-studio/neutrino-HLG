@@ -1,13 +1,9 @@
 using System.Diagnostics;
-using System.Net;
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.Win32;
 
 if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("HLG 仅支持 Windows。");
 System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
@@ -40,30 +36,12 @@ const int port = 8767;
 builder.WebHost.ConfigureKestrel(k => HostBinding.Configure(k, port, certPath, certPassword));
 var app = builder.Build();
 app.UseWebSockets();
-var pairingCode = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
-var authToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-var tokenBytes = Encoding.UTF8.GetBytes(authToken);
-var started = DateTimeOffset.UtcNow;
-var attempts = 0;
-Console.WriteLine($"Neutrino HLG 配对码（10 分钟有效）: {pairingCode}");
+var pairing = new PairingAuth(new TrustedDevices(Path.Combine(NeutrinoPaths.Home, "hlg", "trusted-devices.json")));
+Console.WriteLine($"Neutrino HLG 配对码（10 分钟有效）: {pairing.PairingCode}");
 Console.WriteLine(string.IsNullOrWhiteSpace(certPath)
     ? $"HTTP 正在 0.0.0.0:{port} 监听。使用电脑的 IPv4 地址从手机访问；连接未加密，请在可信网络中使用或配置 HTTPS。"
     : $"HTTPS 正在 0.0.0.0:{port} 监听。手机访问时需信任证书并使用匹配的地址。");
-app.Use(async (context, next) => {
-    if (!context.Request.Path.StartsWithSegments("/api")) { await next(); return; }
-    if (context.Request.Path == "/api/pair" && context.Request.Method == "POST") { await next(); return; }
-    var cookie = context.Request.Cookies["hlg_session"] ?? "";
-    var given = Encoding.UTF8.GetBytes(cookie);
-    if (given.Length != tokenBytes.Length || !CryptographicOperations.FixedTimeEquals(given, tokenBytes)) { context.Response.StatusCode = 401; return; }
-    if (context.Request.Method is not "GET" and not "HEAD")
-    {
-        var origin = context.Request.Headers.Origin.ToString();
-        var expected = $"{context.Request.Scheme}://{context.Request.Host}";
-        if (!string.Equals(origin, expected, StringComparison.OrdinalIgnoreCase)) { context.Response.StatusCode = 403; return; }
-    }
-    context.Response.Headers.CacheControl = "no-store";
-    await next();
-});
+app.Use((HttpContext context, RequestDelegate next) => pairing.Handle(context, next));
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapGet("/api/terminal/shells", () => Results.Ok(TerminalHost.Shells().Select(s => new { s.Id, s.Name })));
@@ -75,16 +53,9 @@ app.MapPost("/api/windows/close", (WindowCatalog.WindowRequest request) => Windo
 app.MapGet("/api/screen/connect", ScreenSession.Handle);
 app.MapGet("/api/clipboard", async () => Results.Ok(new { text = await ScreenSession.ReadClipboard() }));
 app.MapPost("/api/clipboard", async (ClipboardRequest request) => { await ScreenSession.WriteClipboard(request.Text ?? ""); return Results.Ok(new { ok = true }); });
-app.MapPost("/api/pair", async (HttpContext c) => {
-    if (c.Request.Headers.Origin.ToString() != $"{c.Request.Scheme}://{c.Request.Host}") return Results.StatusCode(403);
-    if (DateTimeOffset.UtcNow - started > TimeSpan.FromMinutes(10) || Interlocked.Increment(ref attempts) > 10) return Results.StatusCode(429);
-    var request = await c.Request.ReadFromJsonAsync<PairRequest>();
-    var supplied = Encoding.UTF8.GetBytes(request?.Code ?? "");
-    var expected = Encoding.UTF8.GetBytes(pairingCode);
-    if (supplied.Length != expected.Length || !CryptographicOperations.FixedTimeEquals(supplied, expected)) return Results.Unauthorized();
-    c.Response.Cookies.Append("hlg_session", authToken, new CookieOptions { HttpOnly = true, Secure = c.Request.IsHttps, SameSite = SameSiteMode.Strict, IsEssential = true });
-    return Results.Ok(new { ok = true });
-});
+app.MapPost("/api/pair", (Func<HttpContext, Task<IResult>>)pairing.Pair);
+app.MapPost("/api/trust", (Func<HttpContext, Task<IResult>>)pairing.Trust);
+app.MapPost("/api/trust/restore", (Func<HttpContext, Task<IResult>>)pairing.Restore);
 app.MapGet("/api/status", () => Results.Ok(new { desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), machine = Environment.MachineName }));
 app.MapGet("/api/fs", (string? path) => {
     try {
@@ -131,7 +102,6 @@ app.MapPost("/api/tasks", async (JsonObject body) => {
 });
 app.Run();
 
-record PairRequest(string? Code);
 record AppRequest(string? Path, string? Id);
 record ClipboardRequest(string? Text);
 sealed class NeutrinoBridge : IConversationBackend
