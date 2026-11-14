@@ -24,16 +24,17 @@ class DashboardForm : Form
     bool checking;
     record Address(string Label, string Url, int Priority = 0) { public override string ToString() => Label; }
 
-    public DashboardForm(PairingAuth pairing, DeviceConnections devices, FileLog log) {
+    public DashboardForm(PairingAuth pairing, DeviceConnections devices, FileLog log, Action? openSettings = null) {
         this.pairing = pairing; this.devices = devices; this.log = log;
         Text = "Neutrino HLG"; Icon = AppBrand.Icon; BackColor = Background; ForeColor = TextColor; Font = new Font("Microsoft YaHei UI", 10);
         MinimumSize = new Size(850, 620); Size = new Size(1040, 720); StartPosition = FormStartPosition.CenterScreen;
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28, 18, 28, 18), ColumnCount = 1, RowCount = 3, BackColor = Background };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 75)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 43)); Controls.Add(root);
-        var head = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, BackColor = Background };
-        head.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); head.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
+        var head = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, BackColor = Background };
+        head.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); head.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200)); head.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
         var title = Label("✳  NEUTRINO HLG", 16, FontStyle.Bold); title.Dock = DockStyle.Fill; title.TextAlign = ContentAlignment.MiddleLeft;
-        server.Dock = DockStyle.Fill; server.TextAlign = ContentAlignment.MiddleRight; head.Controls.Add(title, 0, 0); head.Controls.Add(server, 1, 0); root.Controls.Add(head, 0, 0);
+        server.Dock = DockStyle.Fill; server.TextAlign = ContentAlignment.MiddleRight; head.Controls.Add(title, 0, 0); head.Controls.Add(server, 1, 0);
+        var settings = Button("设置"); settings.Anchor = AnchorStyles.Right; settings.Click += (_, _) => openSettings?.Invoke(); head.Controls.Add(settings, 2, 0); root.Controls.Add(head, 0, 0);
         var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, BackColor = Background };
         body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 46)); body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 54)); root.Controls.Add(body, 0, 1);
         var left = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 0, 9, 0), BackColor = Background };
@@ -106,11 +107,22 @@ class DashboardForm : Form
         var index = list.FindIndex(a => a.Url == previous); addresses.SelectedIndex = index >= 0 ? index : 0; addresses.EndUpdate();
     }
     void RefreshDevices() {
-        var current = devices.List(); deviceCount.Text = current.Count(d => d.Online) + " 台设备在线";
-        var next = string.Join("|", current.Select(d => $"{d.Id},{d.Name},{d.Address},{d.Browser},{d.Trusted},{d.Online},{d.Screen},{d.Terminal},{d.Blocked}"));
+        var current = devices.List(); var pending = pairing.PendingApprovals();
+        deviceCount.Text = current.Count(d => d.Online) + " 台设备在线" + (pending.Count > 0 ? "  ·  " + pending.Count + " 项信任申请" : "");
+        var next = string.Join("|", current.Select(d => $"{d.Id},{d.Name},{d.Address},{d.Browser},{d.Trusted},{d.Online},{d.Screen},{d.Terminal},{d.Blocked}")) + ";" + string.Join("|", pending.Select(p => $"{p.Id},{p.Name},{p.Address},{p.Browser}"));
         if (signature == next && deviceList.Controls.Count > 0) return;
         signature = next; deviceList.SuspendLayout(); foreach (Control c in deviceList.Controls.Cast<Control>().ToArray()) c.Dispose(); deviceList.Controls.Clear();
-        if (current.Count == 0) { var empty = Label("暂无连接设备\n\n手机访问左侧地址并完成配对后，将显示在这里。", 10, color: Muted); empty.Width = Math.Max(200, deviceList.ClientSize.Width - 20); empty.Height = 90; deviceList.Controls.Add(empty); }
+        if (current.Count == 0 && pending.Count == 0) { var empty = Label("暂无连接设备\n\n手机访问左侧地址并完成配对后，将显示在这里。", 10, color: Muted); empty.Width = Math.Max(200, deviceList.ClientSize.Width - 20); empty.Height = 90; deviceList.Controls.Add(empty); }
+        foreach (var item in pending) {
+            var card = new Panel { Height = 108, Width = Math.Max(200, deviceList.ClientSize.Width - 24), Margin = new Padding(0, 0, 0, 9), BackColor = ColorTranslator.FromHtml("#293134") };
+            var name = Label(item.Name + "  ·  请求信任", 11, FontStyle.Bold); name.SetBounds(14, 10, Math.Max(140, card.Width - 28), 25); name.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;
+            var info = Label(item.Address + "  ·  " + item.Browser + "  ·  请确认是否为你的设备", 9, color: Muted); info.SetBounds(14, 36, Math.Max(140, card.Width - 28), 23); info.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;
+            var actions = new FlowLayoutPanel { Left = 14, Top = 65, Width = Math.Max(180, card.Width - 28), Height = 36, BackColor = card.BackColor, WrapContents = false, Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right };
+            var approve = Button("允许信任", true); approve.Height = 30;
+            approve.Click += (_, _) => { if (MessageBox.Show("允许 " + item.Name + "（" + item.Address + "）在此 HTTPS 地址免配对码控制电脑？", "确认信任设备", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return; try { pairing.Approve(item.Id); log.Write(LogLevel.Information, "设备", "已允许设备信任"); footer.Text = "已允许信任，手机将自动连接。"; } catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException) { log.Write(LogLevel.Error, "设备", "无法保存设备信任", e); MessageBox.Show("无法保存信任，请查看日志。", "Neutrino HLG", MessageBoxButtons.OK, MessageBoxIcon.Error); } RefreshDevices(); };
+            var reject = Button("拒绝"); reject.Height = 30; reject.Click += (_, _) => { pairing.RejectApproval(item.Id); RefreshDevices(); };
+            actions.Controls.Add(approve); actions.Controls.Add(reject); card.Controls.Add(name); card.Controls.Add(info); card.Controls.Add(actions); deviceList.Controls.Add(card);
+        }
         foreach (var item in current) {
             var card = new Panel { Height = 108, Width = Math.Max(200, deviceList.ClientSize.Width - 24), Margin = new Padding(0, 0, 0, 9), BackColor = ColorTranslator.FromHtml("#293134") };
             var name = Label(item.Name + (item.Trusted ? "  ·  已信任" : ""), 11, FontStyle.Bold); name.SetBounds(14, 10, Math.Max(140, card.Width - 28), 25); name.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;

@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 
 static class HostApplication
 {
-    public static WebApplication Create(string[] args, FileLog log, PairingAuth pairing)
+    public static WebApplication Create(string[] args, FileLog log, PairingAuth pairing, SecureDesktopHub secureDesktop)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory });
         var certPath = Environment.GetEnvironmentVariable("HLG_HTTPS_CERT");
@@ -26,14 +26,18 @@ static class HostApplication
         app.MapGet("/api/windows/icon", (string id, uint processId) => WindowCatalog.Icon(new WindowCatalog.WindowRequest(id, processId)));
         app.MapPost("/api/windows/activate", (WindowCatalog.WindowRequest request) => WindowCatalog.Activate(request));
         app.MapPost("/api/windows/close", (WindowCatalog.WindowRequest request) => WindowCatalog.Close(request));
-        app.MapGet("/api/screen/connect", ScreenSession.Handle);
+        app.MapGet("/api/screen/connect", (HttpContext context) => ScreenSession.Handle(context, () => secureDesktop.LockState == SessionLockState.Unlocked));
+        app.MapGet("/api/screen/secure/connect", (HttpContext context) => SecureScreenSession.Handle(context, secureDesktop));
         app.MapGet("/api/clipboard", async () => Results.Ok(new { text = await ScreenSession.ReadClipboard() }));
         app.MapPost("/api/clipboard", async (ClipboardRequest request) => { await ScreenSession.WriteClipboard(request.Text ?? ""); return Results.Ok(new { ok = true }); });
         app.MapPost("/api/pair", (Func<HttpContext, Task<IResult>>)pairing.Pair);
         app.MapPost("/api/trust", (Func<HttpContext, Task<IResult>>)pairing.Trust);
         app.MapPost("/api/trust/restore", (Func<HttpContext, Task<IResult>>)pairing.Restore);
+        app.MapPost("/api/trust/approval", (Func<HttpContext, Task<IResult>>)pairing.RequestApproval);
+        app.MapPost("/api/trust/approval/status", (Func<HttpContext, Task<IResult>>)pairing.ApprovalStatus);
+        app.MapPost("/api/trust/approval/cancel", (Func<HttpContext, Task<IResult>>)pairing.CancelApproval);
         app.MapGet("/api/presence/connect", pairing.Presence);
-        app.MapGet("/api/status", () => Results.Ok(new { desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), machine = Environment.MachineName }));
+        app.MapGet("/api/status", () => Results.Ok(new { desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), machine = Environment.MachineName, locked = secureDesktop.LockState switch { SessionLockState.Locked => (bool?)true, SessionLockState.Unlocked => false, _ => null }, unlockAvailable = secureDesktop.Available }));
         app.MapGet("/api/fs", (string? path) => {
             try {
                 if (string.IsNullOrWhiteSpace(path)) return Results.Ok(new { roots = DriveInfo.GetDrives().Select(d => new { name = d.Name, type = d.DriveType.ToString(), ready = d.IsReady }) });

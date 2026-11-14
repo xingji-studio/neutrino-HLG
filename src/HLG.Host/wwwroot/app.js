@@ -6,6 +6,7 @@ let appsGeneration = 0;
 let filesGeneration = 0;
 const trustStorageKey = 'hlg.trusted-device.v1';
 let trustRestoration = null, trustCandidate = null, previousTrustToken = null;
+let approvalSerial=0,approvalRunning=false,approvalCandidate=null;
 let presenceSocket = null, presenceHeartbeat = null, presenceRetry = null, presenceEnabled = false;
 let detailTimer, detailGeneration=0, detailRefresh=null, detailPrevious=null, detailDirty={model:false,mode:false}, homeDraft='';
 const conversationDrafts=new Map();
@@ -69,9 +70,16 @@ function renderApps() {
 }
 async function launch(app) { try { const previous=await api('/windows');const old=new Set(previous.map(w=>w.id+':'+w.processId));const result=await api('/apps/open',{method:'POST',body:JSON.stringify(app.id?{id:app.id}:{path:app.path})});void loadApps();toast('正在打开 '+app.name);const name=app.name.toLowerCase();for(let i=0;i<20;i++){await new Promise(r=>setTimeout(r,500));const current=await api('/windows');const matching=current.filter(w=>(result.processId&&w.processId===result.processId)||w.title.toLowerCase().includes(name)||w.application.toLowerCase()===name);const fresh=matching.filter(w=>!old.has(w.id+':'+w.processId));const found=fresh.length===1?fresh[0]:matching.length===1?matching[0]:null;if(found){await api('/windows/activate',{method:'POST',body:JSON.stringify({id:found.id,processId:found.processId})});openRemote(found);return;}}await windows();toast('请选择打开的应用窗口'); } catch(e) { toast(e.message); } }
 function unavailable(name) { openPage(name); empty('此功能正在开发中。'); }
-async function windows() {
+async function windows(showLockedList = false) {
   openPage('当前画面');
   try {
+    const status=await api('/status');
+    if(state.view!=='当前画面')return;
+    if(status.locked===true){
+      if(!status.unlockAvailable){empty('电脑已锁定。请先在电脑端设置中启用远程解锁并配置 HTTPS。');return;}
+      if(showLockedList!==true){openRemote(null,{secure:true});return;}
+      row('▣','登录画面','电脑已锁定',()=>openRemote(null,{secure:true}));return;
+    }
     const list=await api('/windows');
     if(state.view!=='当前画面')return;
     row('▣','全部画面','查看所有显示器',()=>openRemote(null));
@@ -242,7 +250,29 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&presenceE
 window.addEventListener('pagehide',stopPresence);
 window.addEventListener('pageshow',event=>{if(event.persisted&&$('pair').classList.contains('hidden')&&$('trust-dialog').classList.contains('hidden'))void api('/status').then(()=>startPresence()).catch(()=>{});});
 async function init() { try { const status=await api('/status'); state.cwd=status.desktop; $('connection').querySelector('span').textContent=status.machine; startPresence(); } catch(e) { if(e.message!=='请先配对') toast(e.message); return; } await loadApps(); await loadModels(); }
-$('pair-form').onsubmit=async e=>{e.preventDefault();try{await api('/pair',{method:'POST',body:JSON.stringify({code:$('pair-code').value})});startPresence();$('pair').classList.add('hidden');$('pair-error').textContent='';$('pair-code').value='';previousTrustToken=readTrustedToken();trustCandidate=null;$('trust-error').textContent='';$('trust-dialog').classList.remove('hidden');}catch(err){$('pair-error').textContent=err.message;}};
+async function approvalCall(path,token){const response=await fetch('/api/trust/approval'+path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});if(!response.ok)throw new Error(response.status===429?'已有待处理申请，请在电脑端处理后重试。':'无法发起设备信任申请。');return response.json();}
+function cancelApproval(){approvalSerial++;approvalRunning=false;$('trust-approval').textContent='在电脑端确认信任';if(approvalCandidate)void approvalCall('/cancel',approvalCandidate).catch(()=>{});approvalCandidate=null;try{sessionStorage.removeItem('hlg.trust-approval.v1');}catch{}}
+$('trust-approval').classList.toggle('hidden',location.protocol!=='https:');
+$('trust-approval').onclick=async()=>{
+  if(approvalRunning){cancelApproval();$('approval-status').textContent='已取消申请。';return;}
+  const serial=++approvalSerial;approvalRunning=true;$('trust-approval').textContent='取消申请';$('pair-error').textContent='';
+  try{
+    approvalCandidate=sessionStorage.getItem('hlg.trust-approval.v1');
+    if(!approvalCandidate){const random=new Uint8Array(32);crypto.getRandomValues(random);approvalCandidate=Array.from(random,b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();sessionStorage.setItem('hlg.trust-approval.v1',approvalCandidate);}
+    const token=approvalCandidate;let result=await approvalCall('',token);
+    while(serial===approvalSerial&&result.state==='pending'){
+      $('approval-status').textContent='请在电脑端的“连接的设备”中允许信任。';
+      await new Promise(resolve=>setTimeout(resolve,1500));if(serial!==approvalSerial)return;
+      result=await approvalCall('/status',token);
+    }
+    if(serial!==approvalSerial)return;
+    if(result.state!=='approved')throw new Error('申请已过期或被拒绝，请重新申请。');
+    localStorage.setItem(trustStorageKey,token);
+    if(!await restoreTrust())throw new Error('设备已获批准，但连接恢复失败，请重试。');
+    approvalRunning=false;approvalCandidate=null;sessionStorage.removeItem('hlg.trust-approval.v1');$('trust-approval').textContent='在电脑端确认信任';$('approval-status').textContent='';$('pair').classList.add('hidden');startPresence();await init();
+  }catch(error){if(serial!==approvalSerial)return;approvalRunning=false;$('trust-approval').textContent='在电脑端确认信任';$('approval-status').textContent=error.message||'无法申请信任。';}
+};
+$('pair-form').onsubmit=async e=>{e.preventDefault();try{await api('/pair',{method:'POST',body:JSON.stringify({code:$('pair-code').value})});cancelApproval();$('approval-status').textContent='';startPresence();$('pair').classList.add('hidden');$('pair-error').textContent='';$('pair-code').value='';previousTrustToken=readTrustedToken();trustCandidate=null;$('trust-error').textContent='';$('trust-dialog').classList.remove('hidden');}catch(err){$('pair-error').textContent=err.message;}};
 function declineTrust() {
   if(trustCandidate&&readTrustedToken()===trustCandidate){try{if(previousTrustToken)localStorage.setItem(trustStorageKey,previousTrustToken);else localStorage.removeItem(trustStorageKey);}catch{}}
   trustCandidate=null;previousTrustToken=null;$('trust-dialog').classList.add('hidden');void init();
@@ -273,7 +303,7 @@ function navigateBack() {
   if(!$('remote-view').classList.contains('hidden')){
     if(!$('remote-special').classList.contains('hidden')){$('remote-special').classList.add('hidden');return;}
     if(!$('remote-menu').classList.contains('hidden')){$('remote-menu').classList.add('hidden');return;}
-    window.closeRemote();void windows();return;
+    window.closeRemote();void windows(true);return;
   }
   if(!$('settings-panel').classList.contains('hidden')){$('settings-panel').classList.add('hidden');return;}
   if(state.view==='任务详情'){void tasks();return;}

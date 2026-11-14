@@ -1,6 +1,6 @@
 {
   "name": "@xingjisoft/neutrino-hlg",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Windows 主机与手机 Web 端的 Neutrino 远程控制系统",
   "license": "Apache-2.0",
   "repository": {
@@ -42,6 +42,7 @@
     "test:app-list-ui": "node tests/app-list-ui.cjs",
     "test:back-ui": "node tests/back-ui.cjs",
     "test:trust-ui": "node tests/trust-ui.cjs",
+    "test:lock-screen": "dotnet run --project tests/HLG.LockScreen",
     "prepare:desktop": "node scripts/neutrino-hlg.cjs --prepare",
     "test:desktop-launcher": "node tests/desktop-launcher.cjs"
   },

@@ -12,6 +12,7 @@ sealed class PairingAuth
     readonly Action<string>? log;
     readonly object pairingGate = new();
     readonly object trustGate = new();
+    readonly Dictionary<string, Approval> approvals = new(StringComparer.Ordinal);
     string pairingCode = NewCode();
     DateTimeOffset started = DateTimeOffset.UtcNow;
     int attempts;
@@ -33,12 +34,12 @@ sealed class PairingAuth
         if (!context.Request.Path.StartsWithSegments("/api")) { await next(context); return; }
         context.Response.Headers.CacheControl = "no-store";
         var path = context.Request.Path;
-        if (context.Request.Method == "POST" && (path == "/api/pair" || path == "/api/trust/restore")) { await next(context); return; }
+        if (context.Request.Method == "POST" && (path == "/api/pair" || path == "/api/trust/restore" || path == "/api/trust/approval" || path == "/api/trust/approval/status" || path == "/api/trust/approval/cancel")) { await next(context); return; }
         if (!devices.TryGet(context.Request.Cookies["hlg_session"] ?? "", out var session) || session is null) { context.Response.StatusCode = 401; return; }
         if (context.Request.Method is not "GET" and not "HEAD" && !SameOrigin(context)) { context.Response.StatusCode = 403; return; }
         if (context.WebSockets.IsWebSocketRequest && !SameOrigin(context)) { context.Response.StatusCode = 403; return; }
         devices.Update(session, context); context.Items[SessionKey] = session;
-        var kind = path == "/api/presence/connect" ? "presence" : path == "/api/screen/connect" ? "screen" : path == "/api/terminal/connect" ? "terminal" : "";
+        var kind = path == "/api/presence/connect" ? "presence" : path == "/api/screen/connect" || path == "/api/screen/secure/connect" ? "screen" : path == "/api/terminal/connect" ? "terminal" : "";
         using var tracked = context.WebSockets.IsWebSocketRequest && kind.Length > 0 ? devices.Track(session, context, kind) : null;
         if (context.WebSockets.IsWebSocketRequest && kind.Length > 0 && tracked is null) { context.Response.StatusCode = 401; return; }
         await next(context);
@@ -79,6 +80,60 @@ sealed class PairingAuth
             var identity = trusted.Identity(request!.Token)!;
             return SetSession(c, identity) ? Results.Ok(new { ok = true }) : Results.StatusCode(403);
         }
+    }
+    public record Approval(string Id, string Name, string Address, string Browser, DateTimeOffset RequestedAt);
+    void ExpireApprovals() {
+        foreach (var id in approvals.Where(p => DateTimeOffset.UtcNow - p.Value.RequestedAt > TimeSpan.FromMinutes(2)).Select(p => p.Key).ToArray()) approvals.Remove(id);
+    }
+    public IReadOnlyList<Approval> PendingApprovals() { lock (trustGate) { ExpireApprovals(); return approvals.Values.OrderBy(p => p.RequestedAt).ToArray(); } }
+    public void Approve(string id) {
+        lock (trustGate) {
+            ExpireApprovals();
+            if (!approvals.ContainsKey(id)) throw new InvalidOperationException("申请已过期。");
+            if (devices.IsBlocked(id)) throw new InvalidOperationException("此设备已被阻止。");
+            trusted.AddIdentity(id); approvals.Remove(id);
+        }
+    }
+    public void RejectApproval(string id) { lock (trustGate) approvals.Remove(id); }
+    public async Task<IResult> RequestApproval(HttpContext c) {
+        if (!c.Request.IsHttps || !SameOrigin(c)) return Results.StatusCode(403);
+        if (!trusted.Available) return Results.Problem("无法读取设备信任记录。", statusCode: 503);
+        LimitBody(c);
+        var request = await c.Request.ReadFromJsonAsync<TrustRequest>();
+        var identity = trusted.Identity(request?.Token);
+        if (identity is null) return Results.BadRequest(new { error = "无效的设备凭据。" });
+        lock (trustGate) {
+            ExpireApprovals();
+            if (devices.IsBlocked(identity)) return Results.StatusCode(403);
+            if (trusted.IsTrusted(request?.Token)) return Results.Ok(new { state = "approved" });
+            if (approvals.ContainsKey(identity)) return Results.Ok(new { state = "pending" });
+            var device = new DeviceConnections.Session(); devices.Update(device, c);
+            if (approvals.Count >= 8 || approvals.Values.Any(a => a.Address == device.Address)) return Results.StatusCode(429);
+            approvals[identity] = new Approval(identity, device.Name, device.Address, device.Browser, DateTimeOffset.UtcNow);
+            return Results.Ok(new { state = "pending" });
+        }
+    }
+    public async Task<IResult> ApprovalStatus(HttpContext c) {
+        if (!c.Request.IsHttps || !SameOrigin(c)) return Results.StatusCode(403);
+        if (!trusted.Available) return Results.Problem("无法读取设备信任记录。", statusCode: 503);
+        LimitBody(c);
+        var request = await c.Request.ReadFromJsonAsync<TrustRequest>();
+        var identity = trusted.Identity(request?.Token);
+        if (identity is null) return Results.BadRequest(new { error = "无效的设备凭据。" });
+        lock (trustGate) {
+            ExpireApprovals();
+            if (devices.IsBlocked(identity)) return Results.StatusCode(403);
+            return Results.Ok(new { state = trusted.IsTrusted(request?.Token) ? "approved" : approvals.ContainsKey(identity) ? "pending" : "expired" });
+        }
+    }
+    public async Task<IResult> CancelApproval(HttpContext c) {
+        if (!c.Request.IsHttps || !SameOrigin(c)) return Results.StatusCode(403);
+        LimitBody(c);
+        var request = await c.Request.ReadFromJsonAsync<TrustRequest>();
+        var identity = trusted.Identity(request?.Token);
+        if (identity is null) return Results.BadRequest(new { error = "无效的设备凭据。" });
+        lock (trustGate) approvals.Remove(identity);
+        return Results.Ok(new { ok = true });
     }
     public async Task Presence(HttpContext c) {
         if (!SameOrigin(c)) { c.Response.StatusCode = 403; return; }

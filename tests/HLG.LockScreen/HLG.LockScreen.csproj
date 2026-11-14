@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="../../src/HLG.Host/SessionLockState.cs" Link="SessionLockState.cs" />
+    <Compile Include="../../src/HLG.Host/UnlockSettings.cs" Link="UnlockSettings.cs" />
+    <Compile Include="../../src/HLG.Host/SecureService.cs" Link="SecureService.cs" />
+    <Compile Include="../../src/HLG.Host/SecureDesktopHub.cs" Link="SecureDesktopHub.cs" />
+    <Compile Include="../../src/HLG.Host/SecureScreenSession.cs" Link="SecureScreenSession.cs" />
+    <Compile Include="../../src/HLG.Host/SecureSecretJson.cs" Link="SecureSecretJson.cs" />
+    <Compile Include="../../src/HLG.Host/SecureLoginPolicy.cs" Link="SecureLoginPolicy.cs" />
+    <Compile Include="../../src/HLG.Host/FileLog.cs" Link="FileLog.cs" />
+  </ItemGroup>
+</Project>

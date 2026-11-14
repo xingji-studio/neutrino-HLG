@@ -4,7 +4,7 @@
   const cursor=el('remote-cursor');
   const keyboard=el('remote-keyboard'), special=el('remote-special'), menu=el('remote-menu');
   const modifiers=new Set();
-  let socket=null, zoom=1, panX=0, panY=0, shift=false, numeric=false, chinese=false, fn=false, liveUrl=null, heartbeat=null, cursorPosition=null;
+  let socket=null, zoom=1, panX=0, panY=0, shift=false, numeric=false, chinese=false, fn=false, liveUrl=null, heartbeat=null, lockPoll=null, cursorPosition=null, secureMode=false;
   let viewGeneration=0;
   function send(message, disposable=false) { if(socket?.readyState===WebSocket.OPEN && (!disposable || socket.bufferedAmount < 131072)) socket.send(JSON.stringify(message)); }
   function status(text){el('remote-status').textContent=text;}
@@ -38,37 +38,43 @@
   function click(button='left'){send({type:'button',button,down:true});send({type:'button',button,down:false});}
   function showMenu(value){menu.classList.toggle('hidden',!value);if(!value)special.classList.add('hidden');}
   function closeRemote(){
-    viewGeneration++; clearInterval(heartbeat);heartbeat=null; if(socket){socket.close();socket=null;} if(liveUrl){URL.revokeObjectURL(liveUrl);liveUrl=null;}
+    viewGeneration++; clearInterval(heartbeat);clearInterval(lockPoll);heartbeat=lockPoll=null; if(socket){socket.close();socket=null;} if(liveUrl){URL.revokeObjectURL(liveUrl);liveUrl=null;}
     view.classList.add('hidden');el('app').classList.remove('hidden');el('clipboard-dialog').classList.add('hidden');el('remote-text-dialog').classList.add('hidden');
     img.removeAttribute('src'); img.dataset.loading='';cursorPosition=null;cursor.classList.add('hidden');modifiers.clear();showMenu(false);
-    el('remote-keyboard-toggle').classList.remove('active');keyboard.classList.add('hidden');pad.classList.remove('hidden');
+    el('remote-keyboard-toggle').classList.remove('active');keyboard.classList.add('hidden');pad.classList.remove('hidden');el('remote-lock-state').classList.add('hidden');el('remote-clipboard').disabled=false;secureMode=false;
     try{screen.orientation?.unlock();}catch{}
   }
-  window.openRemote = function(target){
-    closeRemote();const generation=++viewGeneration;zoom=1;panX=panY=0;fit();shift=numeric=chinese=fn=false;
+  window.openRemote = function(target,options={}){
+    const secure=options.secure===true,resumeTarget=options.resumeTarget??target;
+    closeRemote();const generation=++viewGeneration;secureMode=secure;zoom=1;panX=panY=0;fit();shift=numeric=chinese=fn=false;
+    el('remote-lock-state').classList.toggle('hidden',!secure);el('remote-clipboard').disabled=secure;
     view.classList.remove('hidden');el('app').classList.add('hidden');status('正在连接画面…');
     const query=target?'id='+encodeURIComponent(target.id)+'&pid='+encodeURIComponent(target.processId):'all=1';
-    const ws=new WebSocket((location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/api/screen/connect?'+query);socket=ws;ws.binaryType='arraybuffer';
+    const endpoint=secure?'/api/screen/secure/connect':'/api/screen/connect?'+query;
+    const ws=new WebSocket((location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+endpoint);socket=ws;ws.binaryType='arraybuffer';let desktopSwitch=false,reportedError=false;
     heartbeat=setInterval(()=>send({type:'heartbeat'}),5000);
-    ws.onopen=()=>{if(generation===viewGeneration)status('等待画面…');};
+    lockPoll=setInterval(async()=>{try{const current=await api('/status');if(generation!==viewGeneration)return;if(current.locked===true&&!secure){if(current.unlockAvailable)openRemote(null,{secure:true,resumeTarget:target});else status('电脑已锁定，请在电脑端启用远程解锁。');}else if(current.locked===false&&secure)openRemote(resumeTarget);}catch{}},1500);
+    ws.onopen=()=>{if(generation===viewGeneration){status('等待画面…');if(secure)send({type:'ready'});}};
     ws.onmessage=event=>{
       if(generation!==viewGeneration)return;
-      if(typeof event.data==='string') {try{const info=JSON.parse(event.data);if(info.type==='error'||info.type==='focus')status(info.message);else if(info.type==='frame'){cursorPosition=Number.isFinite(info.cursor?.x)&&Number.isFinite(info.cursor?.y)?info.cursor:null;updateCursor();}}catch{}return;}
+      if(typeof event.data==='string') {try{const info=JSON.parse(event.data);if(info.type==='error'||info.type==='focus'||info.type==='notice')status(info.message);else if(info.type==='desktop'&&info.locked===false&&secure){openRemote(resumeTarget);return;}else if(info.type==='desktop'&&info.locked===true&&!secure){desktopSwitch=true;status('正在检查电脑锁屏状态…');void api('/status').then(current=>{if(generation!==viewGeneration)return;if(current.locked===true&&current.unlockAvailable)openRemote(null,{secure:true,resumeTarget:target});else if(current.locked===null)status('无法确认 Windows 会话状态，请稍后重试。');else status('电脑已锁定，请在电脑端启用远程解锁。');}).catch(()=>{});return;}else if(info.type==='frame'){cursorPosition=Number.isFinite(info.cursor?.x)&&Number.isFinite(info.cursor?.y)?info.cursor:null;updateCursor();}}catch{}return;}
       if(img.dataset.loading==='1')return;
       img.dataset.loading='1';const url=URL.createObjectURL(new Blob([event.data],{type:'image/jpeg'}));liveUrl=url;
       img.onload=()=>{URL.revokeObjectURL(url);if(liveUrl===url)liveUrl=null;img.dataset.loading='';if(generation===viewGeneration){sizeImage();if(el('remote-status').textContent==='等待画面…')status('');}};
       img.onerror=()=>{URL.revokeObjectURL(url);if(liveUrl===url)liveUrl=null;img.dataset.loading='';};img.src=url;
     };
-    ws.onclose=()=>{if(generation===viewGeneration){clearInterval(heartbeat);heartbeat=null;socket=null;status('连接已断开，请返回后重试。');}};
-    ws.onerror=()=>{if(generation===viewGeneration)status('画面连接失败。');};
+    ws.onclose=()=>{if(generation===viewGeneration){clearInterval(heartbeat);heartbeat=null;socket=null;if(!desktopSwitch&&!reportedError)status('连接已断开，请返回后重试。');}};
+    ws.onerror=()=>{if(generation===viewGeneration){reportedError=true;status(secure?'登录画面连接失败，请在电脑端检查服务与日志。':'画面连接失败。');}};
     renderKeyboard();renderSpecial();
     screen.orientation?.lock?.('landscape').catch(()=>{});
   };
   window.closeRemote=closeRemote;
-  el('remote-back').onclick=()=>{closeRemote();windows();};
+  el('remote-back').onclick=()=>{closeRemote();windows(true);};
   el('remote-keyboard-toggle').onclick=()=>{const show=keyboard.classList.contains('hidden');keyboard.classList.toggle('hidden',!show);pad.classList.toggle('hidden',show);el('remote-keyboard-toggle').classList.toggle('active',show);};
+  for(const event of ['pointerdown','pointermove','pointerup','pointercancel'])el('remote-lock-state').addEventListener(event,e=>e.stopPropagation());
+  el('remote-manual').onclick=()=>{send({type:'manual'});keyboard.classList.remove('hidden');pad.classList.add('hidden');el('remote-keyboard-toggle').classList.add('active');status('已切换到手动解锁。');};
   el('remote-special-toggle').onclick=()=>special.classList.toggle('hidden');
-  function renderSpecial(){special.replaceChildren();for(const name of ['Ctrl','Alt','Win','Shift','Fn']){const b=document.createElement('button');b.textContent=name;b.classList.toggle('active',name==='Fn'?fn:modifiers.has(name));b.onclick=()=>{if(name==='Fn')fn=!fn;else if(modifiers.has(name))modifiers.delete(name);else modifiers.add(name);renderSpecial();renderKeyboard();};special.append(b);}}
+  function renderSpecial(){special.replaceChildren();for(const name of ['Ctrl','Alt','Win','Shift','Fn']){const b=document.createElement('button');b.textContent=name;b.classList.toggle('active',name==='Fn'?fn:modifiers.has(name));b.onclick=()=>{if(name==='Fn')fn=!fn;else if(modifiers.has(name))modifiers.delete(name);else modifiers.add(name);renderSpecial();renderKeyboard();};special.append(b);}if(secureMode){const b=document.createElement('button');b.textContent='Ctrl+Alt+Del';b.onclick=()=>{send({type:'sas'});toast('已请求安全注意序列；如果没有反应，请检查 Windows 系统策略。');};special.append(b);}}
   function renderKeyboard(){
     keyboard.replaceChildren();
     const make=(label,action,cls='',ariaLabel='')=>{const b=document.createElement('button');b.type='button';if(typeof label==='string')b.textContent=label;else b.append(label);if(cls)b.className=cls;if(ariaLabel)b.setAttribute('aria-label',ariaLabel);b.onclick=action;keyboard.append(b);};

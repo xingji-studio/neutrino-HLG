@@ -121,6 +121,8 @@ await using var app = builder.Build();
 app.UseWebSockets();
 app.MapGet("/api/terminal/connect", TerminalHost.Handle);
 app.MapGet("/api/screen/connect", ScreenSession.Handle);
+var canCapture = true;
+app.MapGet("/api/screen/guarded", (HttpContext context) => ScreenSession.Handle(context, () => canCapture));
 await app.StartAsync();
 var origin = app.Urls.Single();
 var uri = new Uri(origin.Replace("http://", "ws://") + "/api/terminal/connect?shell=cmd");
@@ -165,6 +167,31 @@ using (var screen = new ClientWebSocket()) {
     if (frame.MessageType != WebSocketMessageType.Binary || frame.Count < 2 || buffer[0] != 0xff || buffer[1] != 0xd8) throw new Exception("未收到 JPEG 画面。");
     await screen.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "测试结束", cancellation.Token);
 }
+var guardedUri = new Uri(origin.Replace("http://", "ws://") + "/api/screen/guarded?all=1");
+using (var guarded = new ClientWebSocket()) {
+    guarded.Options.SetRequestHeader("Origin", origin);
+    await guarded.ConnectAsync(guardedUri, cancellation.Token);
+    var buffer = new byte[2_000_000];
+    var first = await guarded.ReceiveAsync(buffer.AsMemory(), cancellation.Token);
+    if (first.MessageType != WebSocketMessageType.Text) throw new Exception("受控画面未开始。");
+    ValueWebSocketReceiveResult chunk;
+    do { chunk = await guarded.ReceiveAsync(buffer.AsMemory(), cancellation.Token); } while (!chunk.EndOfMessage);
+    canCapture = false;
+    var lockedEvent = false;
+    for (var i = 0; i < 10 && !lockedEvent; i++) {
+        var stopped = await guarded.ReceiveAsync(buffer.AsMemory(), cancellation.Token);
+        if (stopped.MessageType != WebSocketMessageType.Text) throw new Exception("受控画面的元数据无效。");
+        lockedEvent = Encoding.UTF8.GetString(buffer, 0, stopped.Count).Contains("\"locked\":true");
+        if (!lockedEvent) do { chunk = await guarded.ReceiveAsync(buffer.AsMemory(), cancellation.Token); } while (!chunk.EndOfMessage);
+    }
+    if (!lockedEvent) throw new Exception("锁定后普通桌面未立即停止。");
+}
+using (var denied = new ClientWebSocket()) {
+    denied.Options.SetRequestHeader("Origin", origin); var rejected = false;
+    try { await denied.ConnectAsync(guardedUri, cancellation.Token); } catch (WebSocketException) { rejected = true; }
+    if (!rejected) throw new Exception("锁定期间仍能打开普通桌面。");
+}
+canCapture = true;
 var processPath = Environment.ProcessPath ?? throw new Exception("无法启动窗口测试进程。");
 var childStart = new System.Diagnostics.ProcessStartInfo(processPath) { UseShellExecute = false, RedirectStandardOutput = true, CreateNoWindow = true };
 if (Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase)) childStart.ArgumentList.Add(System.Reflection.Assembly.GetEntryAssembly()!.Location);

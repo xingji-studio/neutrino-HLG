@@ -17,9 +17,17 @@ npm 包安装时会准备终端资源、使用本机 .NET 10 SDK 在后台构建
 
 关闭窗口会收起到系统托盘；从托盘菜单选择“退出”可停止 HLG。主机日志写入 `~/.neutrino/hlg/logs/`（设置 `NEUTRINO_HOME` 时写入该目录的 `hlg/logs/`），每次运行按时间和进程号创建日志文件。已连接设备可在桌面界面断开；受信任设备断开后可在界面允许重新连接或取消信任。
 
-配对成功后可选择信任本设备。信任后，同一浏览器访问同一地址时可在主机重启后自动恢复连接，无需再次输入配对码；浏览器保存设备凭据，电脑仅在 `~/.neutrino/hlg/trusted-devices.json` 保存其哈希（设置 `NEUTRINO_HOME` 时使用该目录下的 `hlg/trusted-devices.json`）。清除浏览器站点数据、使用其他浏览器或地址，或删除电脑端信任记录后需要重新配对。删除该文件并重启 HLG 可撤销全部设备信任。
+配对成功后可选择信任本设备。信任后，同一浏览器访问同一地址时可在主机重启后自动恢复连接，无需再次输入配对码。浏览器保存设备凭据，电脑只保存其哈希：HTTP 使用 `~/.neutrino/hlg/trusted-devices.json`，HTTPS 使用独立的 `trusted-devices-https.json`（设置 `NEUTRINO_HOME` 时使用该目录）。HTTP 凭据可能已经在网络中明文传输，因此不会直接用于 HTTPS 的远程解锁。
+
+从 HTTP 换到 HTTPS、浏览器站点数据丢失或地址改变后，可在手机配对页面选择“在电脑端确认信任”，然后在电脑端“连接的设备”中核对设备和地址并允许，无需输入配对码。请在锁屏前完成首次确认。删除相应信任文件并重启 HLG 可撤销该协议下全部设备信任。
 
 HTTP 不加密配对码、会话和远控内容，建议只在可信局域网测试；跨公网访问应使用可信 HTTPS 或安全的私有网络，并正确配置防火墙和网络路由。将 PFX 文件路径和密码分别设置为 `HLG_HTTPS_CERT`、`HLG_HTTPS_PASSWORD` 后启动，可通过 HTTPS 访问同一端口。证书的主机名必须与手机访问地址匹配，且手机必须信任证书。不要提交证书和密码。
+
+远程解锁目前为测试功能。先配置上述 HTTPS 并通过托盘退出、重新启动 HLG，在电脑端“设置 → 远程解锁”中启用。启用时会将安全桌面组件安装到 `%ProgramFiles%\Neutrino HLG\SecureHost` 并注册按需启动的 `NeutrinoHLGSecureDesktop` Windows 服务；Web 服务和 Neutrino 仍在当前用户会话运行。手机访问受信任的 HTTPS 地址，电脑锁屏后“当前画面”会切换到登录画面，可使用触控板和键盘手动输入。服务运行需要当前物理控制台会话与 HLG 用户一致。
+
+如需自动解锁，在电脑端设置中输入当前 Windows **账户密码**并启用自动输入。密码按当前 Windows 用户使用 DPAPI 加密保存在 `~/.neutrino/hlg/remote-unlock.json`，不会发送到手机；修改或重置 Windows 密码后可能需要重新设置。自动输入只在能够确认账户和密码框时进行，每次锁屏最多尝试一次，无法确认或尝试失败时请手动输入。手机端可选择“手动输入”取消当次自动操作。Windows Hello PIN、生物识别、其他登录提供程序以及企业策略不保证支持自动输入。
+
+“没有远程连接时也自动解锁”会在 HLG 正运行且电脑锁屏时触发自动输入，即使没有手机连接也可能立即解除锁屏。未选择该项时，打开手机登录画面后才尝试。`Ctrl+Alt+Del` 需要 Windows 允许服务模拟安全注意序列；策略不允许时按钮可能无效，HLG 不会修改系统策略。禁用远程解锁会停止该系统服务；程序退出、用户注销或电脑重启后，现有 Web 主机不会在首次登录前运行，故不能在这些状态下保证远程连接。服务与登录画面的完整交互仍需在目标 Windows 机器上验证，测试时请确保有本机登录或其他恢复方式。
 
 终端通过 ConPTY 连接，可选择已检测的 Windows PowerShell、PowerShell 7、CMD、WSL 和 Git Bash，并支持文本复制粘贴。离开页面或切换终端会结束该终端及其子进程。终端继承主机的管理员权限。所列终端为常见安装位置的检测结果，并非所有自定义终端的完整清单。
 
@@ -37,4 +45,4 @@ HLG 任务创建后在 `~/.neutrino/hlg/session/<任务ID>` 写入任务信息�
 
 模型列表直接从当前账户的 `~/.neutrino/model.json` 读取，首次选择参考同目录 `config.json`；打开模型设置和提交任务时会重新读取。设置了 `NEUTRINO_HOME` 时，HLG 和 neutrino 的本机 API 应使用相同目录。浏览器只接收提供商、模型名、是否配置密钥及支持的思考强度，API 密钥与接口地址不会发送到浏览器。创建和运行任务仍需要启动 neutrino 本机 API。
 
-从源码仓库运行测试：在 Windows 上执行 `dotnet run --project tests/HLG.TerminalSmoke` 可验证 ConPTY、窗口截图及 WebSocket 行为，`dotnet run --project tests/HLG.Conversations` 可验证会话恢复和排队等行为，`dotnet run --project tests/HLG.Windows` 可验证应用发现、图标和排序，`dotnet run --project tests/HLG.Network` 可验证网络监听，`dotnet run --project tests/HLG.Pairing` 可验证配对和信任恢复，`dotnet run --project tests/HLG.Desktop` 可验证桌面界面和日志，`npm run test:desktop-launcher` 可验证桌面启动器；`npm run test:remote-ui`、`npm run test:model-ui`、`npm run test:conversation-ui`、`npm run test:app-list-ui`、`npm run test:back-ui` 和 `npm run test:trust-ui` 使用已安装的 Microsoft Edge 验证手机界面。可用 `HLG_TEST_BROWSER` 指定其他兼容的 Chromium 浏览器路径。
+从源码仓库运行测试：在 Windows 上执行 `dotnet run --project tests/HLG.TerminalSmoke` 可验证 ConPTY、窗口截图及 WebSocket 行为，`dotnet run --project tests/HLG.LockScreen` 可验证密码加密、进程间管道限制和 HTTPS 边界，`dotnet run --project tests/HLG.Conversations` 可验证会话恢复和排队等行为，`dotnet run --project tests/HLG.Windows` 可验证应用发现、图标和排序，`dotnet run --project tests/HLG.Network` 可验证网络监听，`dotnet run --project tests/HLG.Pairing` 可验证配对和信任恢复，`dotnet run --project tests/HLG.Desktop` 可验证桌面界面和日志，`npm run test:desktop-launcher` 可验证桌面启动器；`npm run test:remote-ui`、`npm run test:model-ui`、`npm run test:conversation-ui`、`npm run test:app-list-ui`、`npm run test:back-ui` 和 `npm run test:trust-ui` 使用已安装的 Microsoft Edge 验证手机界面。可用 `HLG_TEST_BROWSER` 指定其他兼容的 Chromium 浏览器路径。上述自动测试不会安装系统服务或锁定电脑，不能替代真实锁屏测试。

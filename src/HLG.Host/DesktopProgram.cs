@@ -9,6 +9,11 @@ static class DesktopProgram
     static void Main(string[] args)
     {
         if (!OperatingSystem.IsWindows()) return;
+        if (args is ["--secure-service"] || args.Length > 0 && args[0] == "--secure-worker") {
+            try { if (args[0] == "--secure-service") SecureService.RunService(); else SecureDesktopWorker.Run(args); }
+            catch (Exception e) when (e is UnauthorizedAccessException or System.ComponentModel.Win32Exception or IOException or InvalidOperationException or TimeoutException) { Environment.ExitCode = 1; }
+            return;
+        }
         using (var identity = WindowsIdentity.GetCurrent()) {
             if (!new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator)) {
                 try {
@@ -48,9 +53,16 @@ static class DesktopProgram
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             var devices = new DeviceConnections(message => capturedLog.Write(LogLevel.Information, "设备", message));
-            var pairing = new PairingAuth(new TrustedDevices(Path.Combine(NeutrinoPaths.Home, "hlg", "trusted-devices.json")), devices, message => capturedLog.Write(LogLevel.Warning, "配对", message));
-            var host = HostApplication.Create(args, log, pairing);
-            using var context = new DesktopContext(host, pairing, devices, log);
+            var https = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("HLG_HTTPS_CERT"));
+            // HTTP device tokens may have travelled in plaintext. Do not accept
+            // them on the HTTPS host that can expose the Windows sign-in screen.
+            var trustFile = https ? "trusted-devices-https.json" : "trusted-devices.json";
+            var pairing = new PairingAuth(new TrustedDevices(Path.Combine(NeutrinoPaths.Home, "hlg", trustFile)), devices, message => capturedLog.Write(LogLevel.Warning, "配对", message));
+            var unlock = new UnlockSettings(Path.Combine(NeutrinoPaths.Home, "hlg", "remote-unlock.json"));
+            using var secureDesktop = new SecureDesktopHub(unlock, log, https);
+            if (https) _ = Task.Run(() => { try { if (unlock.Read().Enabled) SecureService.InstallAndStart(); } catch (Exception e) { capturedLog.Write(LogLevel.Error, "远程解锁", "无法启动安全桌面服务", e); } });
+            var host = HostApplication.Create(args, log, pairing, secureDesktop);
+            using var context = new DesktopContext(host, pairing, devices, log, unlock, https);
             var registration = ThreadPool.RegisterWaitForSingleObject(show, (_, _) => context.ShowWindow(), null, Timeout.Infinite, false);
             log.Write(LogLevel.Information, "主机", "正在启动桌面控制面板");
             try { Application.Run(context); } finally { registration.Unregister(null); }

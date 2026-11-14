@@ -8,9 +8,9 @@ sealed class DesktopContext : ApplicationContext
     readonly NotifyIcon tray;
     readonly FileLog log;
     bool exiting;
-    public DesktopContext(WebApplication host, PairingAuth pairing, DeviceConnections devices, FileLog log) {
+    public DesktopContext(WebApplication host, PairingAuth pairing, DeviceConnections devices, FileLog log, UnlockSettings unlock, bool https) {
         this.host = host; this.log = log;
-        form = new DashboardForm(pairing, devices, log);
+        form = new DashboardForm(pairing, devices, log, () => { using var settings = new UnlockSettingsForm(unlock, log, https); settings.ShowDialog(form); });
         MainForm = form;
         var menu = new ContextMenuStrip();
         menu.Items.Add("打开 Neutrino HLG", null, (_, _) => ShowWindow());

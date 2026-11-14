@@ -34,6 +34,10 @@
 .primary, .remote-ball, .remote-menu button.active,
 .remote-special button.active, .remote-keyboard button.active { color: #10232b; }
 
+.remote-lock-state { position: absolute; top: 10px; right: 10px; padding: 6px 10px; border-radius: 20px; background: #202527df; color: #d7f2ff; font-size: 11px; }
+.remote-lock-state button { margin-left: 7px; border: 0; border-radius: 12px; padding: 5px 8px; background: var(--theme); color: #10232b; }
+.remote-menu button:disabled { opacity: .45; }
+
 /* Neutrino's model-intensity slider, retaining its geometry and interaction states. */
 .settings-panel {
   width: min(390px, calc(100vw - 32px)); max-height: min(560px, 65dvh); overflow-y: auto;
@@ -100,4 +104,5 @@ body.conversation-mode #toolbar { margin-top: 0; }
 .approval-reject { background: transparent; border: 1px solid #667171; color: #e3eaea; }
 .trust-actions { display: grid; gap: 9px; }
 .trust-decline { width: 100%; border: 1px solid #4a5151; border-radius: 13px; background: transparent; color: #dce2e1; padding: 13px; font-weight: 600; }
+#trust-approval { margin-top: 10px; }
 .trust-actions button:disabled { opacity: .55; cursor: default; }

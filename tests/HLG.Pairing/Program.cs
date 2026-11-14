@@ -26,6 +26,7 @@ try {
         app.MapPost("/api/trust/restore", (Func<HttpContext, Task<IResult>>)pairing.Restore);
         app.MapGet("/api/presence/connect", pairing.Presence);
         app.MapGet("/api/screen/connect", pairing.Presence);
+        app.MapGet("/api/screen/secure/connect", pairing.Presence);
         app.MapGet("/api/protected", () => Results.Ok(new { ok = true }));
         app.MapGet("/api/socket", async (HttpContext context) => {
             if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }
@@ -64,6 +65,7 @@ try {
                 }
                 using var firstSocket = await Connect(previousCookie, "/api/presence/connect", "iPhone Safari");
                 using var firstScreen = await Connect(previousCookie, "/api/screen/connect", "iPhone Safari");
+                using var secureScreen = await Connect(previousCookie, "/api/screen/secure/connect", "iPhone Safari");
                 using var secondSocket = await Connect(secondCookie, "/api/presence/connect", "Android Chrome");
                 for (var attempt = 0; attempt < 30 && devices.List().Count < 2; attempt++) await Task.Delay(50);
                 var list = devices.List();
@@ -77,7 +79,7 @@ try {
                     catch (WebSocketException) { }
                     catch (OperationCanceledException) { throw new Exception("disconnected socket did not close"); }
                 }
-                await CheckClosed(firstSocket); await CheckClosed(firstScreen);
+                await CheckClosed(firstSocket); await CheckClosed(firstScreen); await CheckClosed(secureScreen);
                 using (var closed = await Send("/api/protected", cookie: previousCookie)) Check(closed.StatusCode == HttpStatusCode.Unauthorized, "disconnected device remained authenticated");
                 using (var other = await Send("/api/protected", cookie: secondCookie)) Check(other.StatusCode == HttpStatusCode.OK, "disconnect affected another device");
                 using (var blocked = await Send("/api/trust/restore", new { token }, origin: address)) Check(blocked.StatusCode == HttpStatusCode.Forbidden, "disconnected trusted device reconnected immediately");
@@ -121,5 +123,27 @@ try {
     context.Request.Body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(new { token })));
     var result = await brokenPairing.Trust(context);
     Check((result as IStatusCodeHttpResult)?.StatusCode == 503, "broken trust database must return a recoverable error");
-    Console.WriteLine("Pairing, origin checks, persistent trust and restart restoration passed.");
+    var approvalPath = Path.Combine(root, "approval.json");
+    var approvalStore = new TrustedDevices(approvalPath);
+    var approvalPairing = new PairingAuth(approvalStore);
+    var approvalToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+    DefaultHttpContext ApprovalContext(string scheme, string origin, string value) {
+        var c = new DefaultHttpContext(); c.Request.Scheme = scheme; c.Request.Host = new HostString("host.test");
+        c.Request.Headers.Origin = origin; c.Request.ContentType = "application/json"; c.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.4");
+        c.Request.Body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(new { token = value })));
+        return c;
+    }
+    Check((await approvalPairing.RequestApproval(ApprovalContext("http", "http://host.test", approvalToken)) as IStatusCodeHttpResult)?.StatusCode == 403, "HTTP approval must be refused");
+    Check((await approvalPairing.RequestApproval(ApprovalContext("https", "https://other.test", approvalToken)) as IStatusCodeHttpResult)?.StatusCode == 403, "cross-origin approval must be refused");
+    Check((await approvalPairing.RequestApproval(ApprovalContext("https", "https://host.test", approvalToken)) as IStatusCodeHttpResult)?.StatusCode == 200, "HTTPS approval request failed");
+    Check(!approvalStore.IsTrusted(approvalToken) && approvalPairing.PendingApprovals().Count == 1, "device was trusted before local approval");
+    var secondToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+    Check((await approvalPairing.RequestApproval(ApprovalContext("https", "https://host.test", secondToken)) as IStatusCodeHttpResult)?.StatusCode == 429, "parallel requests from one address must be limited");
+    approvalPairing.Approve(approvalPairing.PendingApprovals().Single().Id);
+    Check(approvalStore.IsTrusted(approvalToken) && !File.ReadAllText(approvalPath).Contains(approvalToken, StringComparison.OrdinalIgnoreCase), "local approval did not persist a token hash");
+    Check((await approvalPairing.Restore(ApprovalContext("https", "https://host.test", approvalToken)) as IStatusCodeHttpResult)?.StatusCode == 200, "locally approved device could not restore trust");
+    Check((await approvalPairing.RequestApproval(ApprovalContext("https", "https://host.test", secondToken)) as IStatusCodeHttpResult)?.StatusCode == 200, "second request was not accepted after approval");
+    await approvalPairing.CancelApproval(ApprovalContext("https", "https://host.test", secondToken));
+    Check(approvalPairing.PendingApprovals().Count == 0 && !approvalStore.IsTrusted(secondToken), "cancelled request was trusted or remained pending");
+    Console.WriteLine("Pairing, origin checks, persistent trust, local HTTPS approval and restart restoration passed.");
 } finally { Directory.Delete(root, true); }

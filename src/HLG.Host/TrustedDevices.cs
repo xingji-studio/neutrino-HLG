@@ -34,9 +34,13 @@ sealed class TrustedDevices
     }
     public void Add(string token) {
         if (!ValidHex(token)) throw new ArgumentException("无效的设备凭据。", nameof(token));
+        AddIdentity(Digest(token));
+    }
+    internal void AddIdentity(string identity) {
+        if (!ValidHex(identity)) throw new ArgumentException("无效的设备标识。", nameof(identity));
         lock (gate) {
             if (loadFailed) throw new InvalidDataException("无法读取已有的设备信任记录。");
-            var hash = Digest(token);
+            var hash = identity.ToUpperInvariant();
             if (hashes.Contains(hash)) return;
             var next = hashes.Append(hash).ToArray();
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);

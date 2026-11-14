@@ -44,9 +44,9 @@ const server = http.createServer((req,res)=>{
       await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
     });
     await page.goto(origin);await page.locator('#pair').waitFor({state:'visible'});
-    await page.locator('#pair-code').fill('000000');await page.locator('#pair-form button').click();
+    await page.locator('#pair-code').fill('000000');await page.locator('#pair-form button.primary').click();
     await page.waitForFunction(()=>document.getElementById('pair-error').textContent.includes('配对码错误'));
-    await page.locator('#pair-code').fill('123456');await page.locator('#pair-form button').click();
+    await page.locator('#pair-code').fill('123456');await page.locator('#pair-form button.primary').click();
     await page.locator('#trust-dialog').waitFor({state:'visible'});
     assert.equal(await page.locator('#pair').isHidden(),true);
     assert.match(await page.evaluate(()=>window.__presenceSockets[0].url),/\/api\/presence\/connect$/);
@@ -67,12 +67,45 @@ const server = http.createServer((req,res)=>{
     await page.waitForFunction(()=>document.querySelector('#connection span').textContent==='TEST');
     storedToken=null;session=false;await page.reload();await page.locator('#pair').waitFor({state:'visible'});
     assert.equal(await page.evaluate(()=>localStorage.getItem('hlg.trusted-device.v1')),null,'revoked token must be discarded');
-    await page.locator('#pair-code').fill('123456');await page.locator('#pair-form button').click();
+    await page.locator('#pair-code').fill('123456');await page.locator('#pair-form button.primary').click();
     await page.locator('#trust-dialog').waitFor({state:'visible'});await page.locator('#trust-decline').click();
     await page.locator('#trust-dialog').waitFor({state:'hidden'});
     session=false;const before=restores;await page.reload();await page.locator('#pair').waitFor({state:'visible'});
     assert.equal(restores,before,'declining trust must not create a token');
     assert.deepEqual(errors,[]);
-    console.log('Trust prompt, refusal, retry, restart restoration and revocation passed.');
+
+    const secure=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+    const secureErrors=[];secure.on('pageerror',e=>secureErrors.push(e.message));
+    await secure.addInitScript(()=>{class MockWebSocket { static OPEN=1; constructor(){this.readyState=1;setTimeout(()=>this.onopen?.(),0);}send(){}close(){this.readyState=3;this.onclose?.();} }window.WebSocket=MockWebSocket;});
+    await secure.route('https://hlg.test/**',async route=>{
+      const url=new URL(route.request().url()),name=url.pathname==='/'?'index.html':url.pathname.slice(1),file=path.resolve(root,name);
+      if(!file.startsWith(root+path.sep)||!fs.existsSync(file)){await route.fulfill({status:404});return;}
+      await route.fulfill({status:200,contentType:{'.html':'text/html','.js':'text/javascript','.css':'text/css'}[path.extname(file)]||'application/octet-stream',body:fs.readFileSync(file)});
+    });
+    let secureSession=false,pending=null,approved=false,cancelled=0;
+    await secure.route('https://hlg.test/api/**',async route=>{
+      const req=route.request(),url=new URL(req.url());let status=200,data={};
+      if(url.pathname==='/api/trust/approval'){pending=req.postDataJSON().token;data={state:'pending'};}
+      else if(url.pathname==='/api/trust/approval/cancel'){assert.equal(req.postDataJSON().token,pending);pending=null;cancelled++;data={ok:true};}
+      else if(url.pathname==='/api/trust/approval/status'){assert.equal(req.postDataJSON().token,pending);data={state:approved?'approved':'pending'};}
+      else if(url.pathname==='/api/trust/restore'){if(approved&&req.postDataJSON().token===pending){secureSession=true;data={ok:true};}else status=401;}
+      else if(!secureSession)status=401;
+      else if(url.pathname==='/api/status')data={desktop:'C:\\Desktop',machine:'TEST'};
+      else if(url.pathname==='/api/apps')data=[];
+      else if(url.pathname==='/api/neutrino/models')data={providers:[]};
+      await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
+    });
+    await secure.goto('https://hlg.test/');await secure.locator('#pair').waitFor({state:'visible'});
+    await secure.locator('#trust-approval').click();
+    await secure.waitForFunction(()=>document.getElementById('approval-status').textContent.includes('电脑端'));
+    assert.match(pending,/^[A-F0-9]{64}$/);
+    assert.equal(await secure.evaluate(()=>localStorage.getItem('hlg.trusted-device.v1')),null,'pending request must not create trust');
+    await secure.locator('#trust-approval').click();await secure.waitForFunction(()=>document.getElementById('approval-status').textContent.includes('已取消'));
+    await new Promise(resolve=>setTimeout(resolve,100));assert.equal(cancelled,1);
+    await secure.locator('#trust-approval').click();await secure.waitForFunction(()=>document.getElementById('approval-status').textContent.includes('电脑端'));
+    approved=true;await secure.locator('#pair').waitFor({state:'hidden'});
+    assert.equal(await secure.evaluate(()=>localStorage.getItem('hlg.trusted-device.v1')),pending);
+    assert.deepEqual(secureErrors,[]);await secure.close();
+    console.log('Trust prompt, refusal, retry, restart restoration, revocation and HTTPS local approval passed.');
   } finally {await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

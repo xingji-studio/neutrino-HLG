@@ -32,11 +32,11 @@ const server = http.createServer((req, res) => {
       window.WebSocket=MockWebSocket;
       Element.prototype.setPointerCapture=function(){};
     });
-    let activations=0,denyActivation=true;
+    let activations=0,denyActivation=true,locked=false;
     await page.route('**/api/**', async route => {
       const url = new URL(route.request().url());
       let data = {};
-      if (url.pathname === '/api/status') data = { desktop:'C:\\Users\\Test\\Desktop', machine:'TEST' };
+      if (url.pathname === '/api/status') data = { desktop:'C:\\Users\\Test\\Desktop', machine:'TEST', locked, unlockAvailable:true };
       else if (url.pathname === '/api/apps') data = [{name:'有图标应用',path:'C:\\Start Menu\\One.lnk'},{name:'缺少图标应用',path:'C:\\Start Menu\\Two.lnk'}];
       else if (url.pathname === '/api/apps/icon') {
         if(url.searchParams.get('path').endsWith('One.lnk'))await route.fulfill({status:200,contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="red"/></svg>'});
@@ -70,6 +70,23 @@ const server = http.createServer((req, res) => {
     await page.locator('#remote-view').waitFor({ state:'visible' });
     assert.equal(activations,2);
     assert.match(await page.evaluate(()=>window.__sockets.at(-1).url),/screen\/connect\?id=100&pid=1$/);
+    locked=true;
+    await page.waitForFunction(()=>window.__sockets.at(-1).url.endsWith('/api/screen/secure/connect'));
+    assert.equal(await page.locator('#remote-lock-state').isVisible(),true);
+    assert.equal(await page.locator('#remote-clipboard').isDisabled(),true);
+    const beforeManual=await page.evaluate(()=>window.__sent.filter(m=>m.type==='button').length);
+    await page.locator('#remote-manual').click();
+    assert(await page.evaluate(()=>window.__sent.some(m=>m.type==='manual')));
+    assert.equal(await page.evaluate(()=>window.__sent.filter(m=>m.type==='button').length),beforeManual,'manual control must not click the remote login screen');
+    assert.equal(await page.locator('#remote-keyboard').isVisible(),true);
+    await page.locator('#remote-ball').click();
+    await page.locator('#remote-special-toggle').click();
+    await page.locator('#remote-special').getByRole('button',{name:'Ctrl+Alt+Del'}).click();
+    assert(await page.evaluate(()=>window.__sent.some(m=>m.type==='sas')));
+    locked=false;
+    await page.evaluate(()=>window.__sockets.at(-1).onmessage({data:JSON.stringify({type:'desktop',locked:false})}));
+    await page.waitForFunction(()=>window.__sockets.at(-1).url.endsWith('/api/screen/connect?id=100&pid=1'));
+    assert.equal(await page.locator('#remote-lock-state').isHidden(),true);
     await page.evaluate(async () => {
       const c=document.createElement('canvas');c.width=80;c.height=60;c.getContext('2d').fillRect(0,0,80,60);
       const blob=await new Promise(resolve=>c.toBlob(resolve,'image/jpeg'));
@@ -153,6 +170,14 @@ const server = http.createServer((req, res) => {
     await page.evaluate(()=>history.back());await page.locator('#remote-view').waitFor({state:'hidden'});
     assert.equal(await page.locator('#remote-view').isHidden(), true);
     assert.equal(await page.locator('#back svg').count(),1);
+    await page.locator('#back').click();
+    locked=true;
+    await page.getByRole('button', { name:'当前画面' }).click();
+    await page.waitForFunction(()=>window.__sockets.at(-1).url.endsWith('/api/screen/secure/connect'));
+    await page.locator('#remote-ball').click();await page.locator('#remote-back').click();
+    await page.getByRole('button',{name:/登录画面/}).waitFor();
+    assert.equal(await page.locator('#remote-view').isHidden(),true);
+    locked=false;
     await page.locator('#back').click();
     await page.getByRole('button', { name:'终端' }).click();
     for(const [label,sequence] of [['向上','\x1b[A'],['向下','\x1b[B'],['向左','\x1b[D'],['向右','\x1b[C']]) {

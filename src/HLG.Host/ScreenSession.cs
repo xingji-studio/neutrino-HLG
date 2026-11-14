@@ -18,11 +18,14 @@ static class ScreenSession
     const uint LeftDown = 0x0002, LeftUp = 0x0004, RightDown = 0x0008, RightUp = 0x0010, Wheel = 0x0800;
     const uint KeyUp = 0x0002, Unicode = 0x0004;
 
-    public static async Task Handle(HttpContext context)
+    public static Task Handle(HttpContext context) => Handle(context, static () => true);
+
+    internal static async Task Handle(HttpContext context, Func<bool> canCapture)
     {
         var expected = $"{context.Request.Scheme}://{context.Request.Host}";
         if (!string.Equals(context.Request.Headers.Origin.ToString(), expected, StringComparison.OrdinalIgnoreCase)) { context.Response.StatusCode = 403; return; }
         if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }
+        if (!canCapture()) { context.Response.StatusCode = 409; return; }
         var all = context.Request.Query["all"] == "1";
         var id = context.Request.Query["id"].ToString();
         _ = uint.TryParse(context.Request.Query["pid"].ToString(), out var pid);
@@ -58,6 +61,7 @@ static class ScreenSession
         var capture = Task.Run(async () => {
             try {
                 while (!cancel.IsCancellationRequested && socket.State == WebSocketState.Open) {
+                    if (!canCapture()) { await SendJson(new { type = "desktop", locked = true }); break; }
                     var hwnd = ResolveTarget();
                     if (!all && hwnd == IntPtr.Zero) { await SendJson(new { type = "error", message = "窗口已关闭或不可用。" }); break; }
                     var bounds = Bounds(hwnd);
@@ -100,6 +104,7 @@ static class ScreenSession
                     if (pressed.Remove(button)) MouseButton(button, false);
                     continue;
                 }
+                if (!canCapture()) continue;
                 if (!all && (hwnd == IntPtr.Zero || GetForegroundWindow() != hwnd)) {
                     foreach (var held in pressed) MouseButton(held, false);
                     pressed.Clear();
@@ -148,7 +153,7 @@ static class ScreenSession
         }
     }
 
-    static bool Number(JsonElement element, string name, out double value) {
+    internal static bool Number(JsonElement element, string name, out double value) {
         value = 0; return element.TryGetProperty(name, out var property) && property.TryGetDouble(out value) && double.IsFinite(value);
     }
     static long ProcessStart(uint pid) {
@@ -185,19 +190,20 @@ static class ScreenSession
     internal static CursorPosition MapCursor(Rectangle bounds, Point point) => new(
         (point.X - (double)bounds.Left) / Math.Max(1, bounds.Width - 1),
         (point.Y - (double)bounds.Top) / Math.Max(1, bounds.Height - 1));
-    static void MoveAbsolute(Rectangle bounds, double x, double y) { var p = MapPoint(bounds, x, y); if (!SetCursorPos(p.X, p.Y)) throw new Win32Exception(); }
+    internal static CursorPosition? CurrentCursor(Rectangle bounds) => GetCursorPos(out var point) ? MapCursor(bounds, new Point(point.X, point.Y)) : null;
+    internal static void MoveAbsolute(Rectangle bounds, double x, double y) { var p = MapPoint(bounds, x, y); if (!SetCursorPos(p.X, p.Y)) throw new Win32Exception(); }
     static bool CursorOnWindow(IntPtr hwnd) => GetCursorPos(out var point) && GetAncestor(WindowFromPoint(point), 2) == hwnd;
-    static void MoveRelative(Rectangle bounds, double dx, double dy) {
+    internal static void MoveRelative(Rectangle bounds, double dx, double dy) {
         if (!GetCursorPos(out var p)) throw new Win32Exception();
         var x = Math.Clamp((long)p.X + (long)Math.Clamp(dx, -2000, 2000), bounds.Left, (long)bounds.Right - 1);
         var y = Math.Clamp((long)p.Y + (long)Math.Clamp(dy, -2000, 2000), bounds.Top, (long)bounds.Bottom - 1);
         if (!SetCursorPos((int)x, (int)y)) throw new Win32Exception();
     }
-    static void MouseButton(string button, bool down) => Inject(new Input { Type = InputMouse, Data = new InputData { Mouse = new MouseInput { Flags = button == "right" ? (down ? RightDown : RightUp) : (down ? LeftDown : LeftUp) } } });
-    static void Scroll(int amount) => Inject(new Input { Type = InputMouse, Data = new InputData { Mouse = new MouseInput { Flags = Wheel, MouseData = unchecked((uint)amount) } } });
+    internal static void MouseButton(string button, bool down) => Inject(new Input { Type = InputMouse, Data = new InputData { Mouse = new MouseInput { Flags = button == "right" ? (down ? RightDown : RightUp) : (down ? LeftDown : LeftUp) } } });
+    internal static void Scroll(int amount) => Inject(new Input { Type = InputMouse, Data = new InputData { Mouse = new MouseInput { Flags = Wheel, MouseData = unchecked((uint)amount) } } });
     static Input Key(ushort vk, ushort scan, uint flags) => new() { Type = InputKeyboard, Data = new InputData { Keyboard = new KeyboardInput { Vk = vk, Scan = scan, Flags = flags } } };
     static void Inject(params Input[] input) { if (SendInput((uint)input.Length, input, Marshal.SizeOf<Input>()) != input.Length) throw new Win32Exception("Windows 未接受输入。"); }
-    static void SendKey(string name, string[] modifiers) {
+    internal static void SendKey(string name, string[] modifiers) {
         ushort vk = name switch { "Enter" => 0x0D, "Backspace" => 0x08, "Tab" => 0x09, "Esc" => 0x1B, "Space" => 0x20, "Delete" => 0x2E, "Left" => 0x25, "Up" => 0x26, "Right" => 0x27, "Down" => 0x28, "Shift" => 0x10, _ => 0 };
         if (vk == 0 && name.Length == 1) { char c = char.ToUpperInvariant(name[0]); if (c is >= 'A' and <= 'Z' or >= '0' and <= '9') vk = c; }
         if (vk == 0 && name.StartsWith('F') && int.TryParse(name.AsSpan(1), out var f) && f is >= 1 and <= 12) vk = (ushort)(0x70 + f - 1);
@@ -208,7 +214,8 @@ static class ScreenSession
         foreach (var mod in active.Reverse()) inputs.Add(Key(mod, 0, KeyUp));
         Inject(inputs.ToArray());
     }
-    static void SendText(string text) { foreach (var c in text) Inject(Key(0, c, Unicode), Key(0, c, Unicode | KeyUp)); }
+    internal static void SendUnicode(char c) => Inject(Key(0, c, Unicode), Key(0, c, Unicode | KeyUp));
+    internal static void SendText(string text) { foreach (var c in text) SendUnicode(c); }
     static Task<T> Sta<T>(Func<T> action) {
         var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() => { try { result.TrySetResult(action()); } catch (Exception e) { result.TrySetException(e); } });
