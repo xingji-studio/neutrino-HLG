@@ -1,6 +1,6 @@
 {
   "name": "@xingjisoft/neutrino-hlg",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Windows 主机与手机 Web 端的 Neutrino 远程控制系统",
   "license": "Apache-2.0",
   "repository": {
