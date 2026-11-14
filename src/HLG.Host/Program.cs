@@ -38,6 +38,9 @@ static class HostApplication
         app.MapPost("/api/trust/approval/cancel", (Func<HttpContext, Task<IResult>>)pairing.CancelApproval);
         app.MapGet("/api/presence/connect", pairing.Presence);
         app.MapGet("/api/status", () => Results.Ok(new { desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), machine = Environment.MachineName, locked = secureDesktop.LockState switch { SessionLockState.Locked => (bool?)true, SessionLockState.Unlocked => false, _ => null }, unlockAvailable = secureDesktop.Available }));
+        var fileTransfers = new FileTransferService();
+        app.MapPost("/api/fs/paste", fileTransfers.Paste);
+        app.MapGet("/api/fs/download", fileTransfers.Download);
         app.MapGet("/api/fs", (string? path) => {
             try {
                 if (string.IsNullOrWhiteSpace(path)) return Results.Ok(new { roots = DriveInfo.GetDrives().Select(d => new { name = d.Name, type = d.DriveType.ToString(), ready = d.IsReady }) });

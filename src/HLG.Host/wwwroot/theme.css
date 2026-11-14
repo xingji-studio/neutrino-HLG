@@ -1,4 +1,5 @@
 :root { --theme: #45ACD7; }
+#toast { pointer-events: none; }
 
 .arrow-icon { display: block; width: 18px; height: 18px; flex: none; }
 .window-icon-fallback { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
@@ -37,6 +38,27 @@
 .remote-lock-state { position: absolute; top: 10px; right: 10px; padding: 6px 10px; border-radius: 20px; background: #202527df; color: #d7f2ff; font-size: 11px; }
 .remote-lock-state button { margin-left: 7px; border: 0; border-radius: 12px; padding: 5px 8px; background: var(--theme); color: #10232b; }
 .remote-menu button:disabled { opacity: .45; }
+.remote-float { width: 44px; height: 44px; display: block; }
+.remote-ball { position: absolute; left: 0; top: 0; }
+.remote-float .remote-menu, .remote-float .remote-special { position: absolute; left: 0; bottom: calc(100% + 8px); width: max-content; }
+.remote-float .remote-special { bottom: calc(100% + 56px); }
+.remote-float.menu-align-right .remote-menu, .remote-float.menu-align-right .remote-special { left: auto; right: 0; }
+.remote-float.menu-open-down .remote-menu { bottom: auto; top: calc(100% + 8px); }
+.remote-float.menu-open-down .remote-special { bottom: auto; top: calc(100% + 56px); }
+.file-directory-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0 14px; }
+.file-directory-path { flex: 1 1 100%; min-width: 0; color: #a5afb0; font-size: 11px; overflow-wrap: anywhere; }
+.file-directory-bar button { border: 1px solid #465158; border-radius: 11px; background: #273136; color: #d7eef7; padding: 8px 10px; font-size: 11px; white-space: nowrap; }
+.file-directory-bar button:disabled, .file-menu-actions button:disabled { opacity: .4; }
+.file-entry { -webkit-touch-callout: none; user-select: none; }
+.file-menu-overlay { position: fixed; inset: 0; z-index: 12; display: flex; align-items: flex-end; justify-content: center; background: #070a0bc9; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+.file-menu-card { width: min(100%, 510px); max-height: min(80dvh, 600px); overflow-y: auto; border: 1px solid #465158; border-radius: 22px; background: #202527; box-shadow: 0 18px 54px #0009; padding: 12px; }
+.file-menu-heading { display: flex; align-items: center; gap: 12px; padding: 6px 6px 10px 10px; color: #aebabc; font-size: 12px; }
+.file-menu-heading span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-menu-heading button { display: grid; place-items: center; border: 0; border-radius: 50%; width: 30px; height: 30px; background: #303a3d; color: #e9eeee; }
+.file-menu-actions { display: grid; gap: 3px; }
+.file-menu-actions button, .file-menu-actions a { display: block; width: 100%; border: 0; border-radius: 12px; background: transparent; color: #eef4f4; padding: 13px 12px; text-align: left; text-decoration: none; font-size: 14px; }
+.file-menu-actions button:active, .file-menu-actions a:active { background: #344349; }
+.file-copy-dialog textarea { width: 100%; resize: vertical; background: #15191a; color: #eef4f4; border: 1px solid #465158; border-radius: 12px; padding: 12px; margin: 4px 0 12px; font: 13px/1.5 system-ui; }
 
 /* Neutrino's model-intensity slider, retaining its geometry and interaction states. */
 .settings-panel {

@@ -93,6 +93,36 @@ const server = http.createServer((req, res) => {
       window.__sockets.at(-1).onmessage({data:await blob.arrayBuffer()});
     });
     await page.waitForFunction(()=>document.getElementById('remote-image').naturalWidth===80);
+    const ballResult=await page.evaluate(()=>{
+      const floating=document.getElementById('remote-float'),ball=document.getElementById('remote-ball'),menu=document.getElementById('remote-menu');
+      floating.style.left=(innerWidth-54)+'px';floating.style.top=(innerHeight-54)+'px';floating.style.bottom='auto';
+      const before=ball.getBoundingClientRect(),x=before.left+before.width/2,y=before.top+before.height/2;
+      ball.dispatchEvent(new PointerEvent('pointerdown',{pointerId:31,pointerType:'touch',button:0,clientX:x,clientY:y,bubbles:true}));
+      ball.dispatchEvent(new PointerEvent('pointerup',{pointerId:31,pointerType:'touch',button:0,clientX:x,clientY:y,bubbles:true}));
+      const hiddenBeforeClick=menu.classList.contains('hidden'),target=document.elementFromPoint(x,y);target.click();
+      const after=ball.getBoundingClientRect(),bar=menu.getBoundingClientRect();
+      return {hiddenBeforeClick,target:target.id,ballMoved:Math.hypot(before.left-after.left,before.top-after.top),menuVisible:!menu.classList.contains('hidden'),menuLeft:bar.left,menuRight:bar.right,viewport:innerWidth};
+    });
+    assert.equal(ballResult.hiddenBeforeClick,true,'menu must wait for the original click to avoid activating Back');
+    assert.equal(ballResult.target,'remote-ball');assert.equal(ballResult.menuVisible,true);assert(ballResult.ballMoved<1,'floating ball must not move when the toolbar opens');
+    assert(ballResult.menuLeft>=0&&ballResult.menuRight<=ballResult.viewport,'toolbar must remain visible near the right edge');
+    assert.equal(await page.locator('#remote-view').isVisible(),true,'opening the toolbar must not navigate back');
+    await page.locator('#remote-ball').click();
+    const ballBounds=await page.locator('#remote-ball').boundingBox();
+    await page.touchscreen.tap(ballBounds.x+ballBounds.width/2,ballBounds.y+ballBounds.height/2);
+    assert.equal(await page.locator('#remote-menu').isVisible(),true,'a real touch opens the toolbar');
+    assert.equal(await page.locator('#remote-view').isVisible(),true,'a real touch must not navigate back');
+    await page.touchscreen.tap(ballBounds.x+ballBounds.width/2,ballBounds.y+ballBounds.height/2);
+    assert.equal(await page.locator('#remote-menu').isHidden(),true,'a second touch closes the toolbar');
+    const ballDrag=await page.evaluate(()=>{
+      const ball=document.getElementById('remote-ball'),menu=document.getElementById('remote-menu'),r=ball.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+      const emit=(type,px)=>ball.dispatchEvent(new PointerEvent(type,{pointerId:32,pointerType:'touch',button:0,clientX:px,clientY:y,bubbles:true}));
+      emit('pointerdown',x);emit('pointermove',x-50);emit('pointerup',x-50);ball.click();
+      return {hidden:menu.classList.contains('hidden'),moved:r.left-ball.getBoundingClientRect().left};
+    });
+    assert.equal(ballDrag.hidden,true,'dragging the floating ball must not open the toolbar');
+    assert(ballDrag.moved>30,'floating ball remains draggable');
+    await page.evaluate(()=>{document.getElementById('remote-float').style.left=(innerWidth-54)+'px';});
     const smallFrame=await page.locator('#remote-image').boundingBox();
     const screenFrame=await page.locator('#remote-canvas').boundingBox();
     assert(smallFrame.width>80,'small selected window fills the available display area');
@@ -134,13 +164,42 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.evaluate(() => window.__sent.filter(m=>m.type==='button').length), beforeBlankTap);
     await page.evaluate(()=>window.__sockets.at(-1).onmessage({data:JSON.stringify({type:'frame',width:800,height:600,cursor:{x:.9,y:.5}})}));
     assert.equal(await page.locator('#remote-cursor').evaluate(el=>el.classList.contains('is-edge')),false);
-    await page.evaluate(() => {
-      const t=document.querySelector('#remote-canvas'),r=t.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
-      const emit=(type,id,px)=>t.dispatchEvent(new PointerEvent(type,{pointerId:id,clientX:px,clientY:y,bubbles:true,button:0}));
-      emit('pointerdown',1,x-50);emit('pointerdown',2,x+50);emit('pointermove',2,x+150);emit('pointerup',2,x+150);emit('pointerup',1,x-50);
+    const movementAtOne=await page.evaluate(()=>{
+      const t=document.getElementById('trackpad'),r=t.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,start=window.__sent.length;
+      for(const [type,dx] of [['pointerdown',0],['pointermove',100],['pointerup',100]])t.dispatchEvent(new PointerEvent(type,{pointerId:7,pointerType:'touch',clientX:x+dx,clientY:y,bubbles:true,button:0}));
+      return window.__sent.slice(start).find(m=>m.type==='relative').dx;
     });
+    assert.equal(movementAtOne,200,'original pointer speed stays unchanged at 1x zoom');
+    const pinchResult=await page.evaluate(async () => {
+      const t=document.querySelector('#remote-canvas'),r=t.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+      const emit=(type,id,px)=>t.dispatchEvent(new PointerEvent(type,{pointerId:id,pointerType:'touch',clientX:px,clientY:y,bubbles:true,button:0}));
+      const before=window.__sent.filter(m=>m.type==='button').length;
+      emit('pointerdown',1,x-50);emit('pointermove',1,x-38);
+      await new Promise(resolve=>setTimeout(resolve,110));
+      const beforeSecond=window.__sent.filter(m=>m.type==='button').length;
+      emit('pointerdown',2,x+50);emit('pointermove',2,x+138);emit('pointerup',2,x+138);emit('pointerup',1,x-38);
+      return {before,beforeSecond,after:window.__sent.filter(m=>m.type==='button').length};
+    });
+    assert.equal(pinchResult.beforeSecond,pinchResult.before,'first finger movement must not start a drag before the second finger joins');
+    assert.equal(pinchResult.after,pinchResult.before,'pinch zoom must not send mouse selection events');
     assert.match(await page.locator('#remote-image').getAttribute('style'), /scale\(2\)/);
     assert.equal(await page.locator('#remote-cursor').evaluate(el=>el.classList.contains('is-edge')),true,'cursor leaving the zoomed viewport becomes an edge arrow');
+    const singleFinger=await page.evaluate(async()=>{
+      const t=document.getElementById('remote-canvas'),r=t.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+      const emit=(type,id,px)=>t.dispatchEvent(new PointerEvent(type,{pointerId:id,pointerType:'touch',clientX:px,clientY:y,bubbles:true,button:0}));
+      const buttons=()=>window.__sent.filter(m=>m.type==='button').map(m=>m.down);
+      let start=buttons().length;emit('pointerdown',10,x);emit('pointerup',10,x);const tap=buttons().slice(start);
+      start=buttons().length;emit('pointerdown',11,x);emit('pointermove',11,x+20);await new Promise(resolve=>setTimeout(resolve,220));const held=buttons().slice(start);emit('pointerup',11,x+20);const drag=buttons().slice(start);
+      start=buttons().length;emit('pointerdown',12,x);emit('pointermove',12,x+20);const beforeQuickRelease=buttons().slice(start);emit('pointerup',12,x+20);const quickDrag=buttons().slice(start);
+      start=buttons().length;emit('pointerdown',13,x);emit('pointermove',13,x+20);emit('pointercancel',13,x+20);await new Promise(resolve=>setTimeout(resolve,200));const cancelled=buttons().slice(start);
+      return {tap,held,drag,beforeQuickRelease,quickDrag,cancelled};
+    });
+    assert.deepEqual(singleFinger.tap,[true,false],'a single touch still clicks');
+    assert.deepEqual(singleFinger.held,[true],'a held drag starts after the second-finger window');
+    assert.deepEqual(singleFinger.drag,[true,false],'a held drag releases the mouse');
+    assert.deepEqual(singleFinger.beforeQuickRelease,[],'a quick gesture waits for a second finger');
+    assert.deepEqual(singleFinger.quickDrag,[true,false],'a quick single-finger swipe still drags');
+    assert.deepEqual(singleFinger.cancelled,[],'a cancelled gesture must not click');
     await page.locator('#remote-ball').click();
     await page.locator('#remote-keyboard-toggle').click();
     assert.equal(await page.locator('#remote-keyboard').isVisible(), true);
@@ -158,8 +217,17 @@ const server = http.createServer((req, res) => {
     await page.locator('#remote-keyboard-toggle').click();
     assert.equal(await page.locator('#trackpad').isVisible(), true);
     const p=await page.locator('#trackpad').boundingBox();
-    await page.evaluate(({x,y})=>{const t=document.querySelector('#trackpad');for(const [type,dx] of [['pointerdown',0],['pointermove',10],['pointerup',10]])t.dispatchEvent(new PointerEvent(type,{pointerId:8,clientX:x+dx,clientY:y,bubbles:true,button:0}));},{x:p.x+p.width/2,y:p.y+p.height/2});
-    assert(await page.evaluate(() => window.__sent.some(m=>m.type==='relative' && m.dx===10)));
+    const movementAtTwo=await page.evaluate(({x,y})=>{const t=document.querySelector('#trackpad'),start=window.__sent.length;for(const [type,dx] of [['pointerdown',0],['pointermove',100],['pointerup',100]])t.dispatchEvent(new PointerEvent(type,{pointerId:8,clientX:x+dx,clientY:y,bubbles:true,button:0}));return window.__sent.slice(start).find(m=>m.type==='relative').dx;},{x:p.x+p.width/2,y:p.y+p.height/2});
+    assert(movementAtTwo>=114&&movementAtTwo<=115,'2x zoom retains slightly more pointer speed than inverse scaling');
+    await page.evaluate(()=>{
+      const t=document.querySelector('#remote-canvas'),r=t.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+      const emit=(type,id,px)=>t.dispatchEvent(new PointerEvent(type,{pointerId:id,pointerType:'touch',clientX:px,clientY:y,bubbles:true,button:0}));
+      emit('pointerdown',21,x-40);emit('pointerdown',22,x+40);emit('pointermove',22,x+160);emit('pointerup',22,x+160);emit('pointerup',21,x-40);
+    });
+    assert.match(await page.locator('#remote-image').getAttribute('style'), /scale\(5\)/);
+    const movementAtFive=await page.evaluate(({x,y})=>{const t=document.querySelector('#trackpad'),start=window.__sent.length;for(const [type,dx] of [['pointerdown',0],['pointermove',100],['pointerup',100]])t.dispatchEvent(new PointerEvent(type,{pointerId:8,clientX:x+dx,clientY:y,bubbles:true,button:0}));return window.__sent.slice(start).find(m=>m.type==='relative').dx;},{x:p.x+p.width/2,y:p.y+p.height/2});
+    assert(movementAtFive>=63&&movementAtFive<=64,'5x zoom slows the pointer but stays faster than inverse scaling');
+    assert(movementAtFive-40>movementAtTwo-100,'the speed improvement grows with zoom');
     await page.locator('#remote-clipboard').click();
     await page.locator('#clipboard-read').click();
     await page.waitForFunction(() => document.getElementById('clipboard-text').value === '示例文字');

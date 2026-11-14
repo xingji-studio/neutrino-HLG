@@ -41,6 +41,8 @@
     "test:conversation-ui": "node tests/conversation-ui.cjs",
     "test:app-list-ui": "node tests/app-list-ui.cjs",
     "test:back-ui": "node tests/back-ui.cjs",
+    "test:file-browser-ui": "node tests/file-browser-ui.cjs",
+    "test:files": "dotnet run --project tests/HLG.Files",
     "test:trust-ui": "node tests/trust-ui.cjs",
     "test:lock-screen": "dotnet run --project tests/HLG.LockScreen",
     "prepare:desktop": "node scripts/neutrino-hlg.cjs --prepare",
