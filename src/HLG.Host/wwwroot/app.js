@@ -6,6 +6,7 @@ let appsGeneration = 0;
 let filesGeneration = 0;
 const trustStorageKey = 'hlg.trusted-device.v1';
 let trustRestoration = null, trustCandidate = null, previousTrustToken = null;
+let presenceSocket = null, presenceHeartbeat = null, presenceRetry = null, presenceEnabled = false;
 let detailTimer, detailGeneration=0, detailRefresh=null, detailPrevious=null, detailDirty={model:false,mode:false}, homeDraft='';
 const conversationDrafts=new Map();
 function closeTerminal() { if (!terminalSession) return; const session=terminalSession; terminalSession=null; session.observer?.disconnect(); session.socket?.close(); session.term?.dispose(); }
@@ -229,8 +230,19 @@ function renderIntensity() {
 }
 function updateLevels(preferred) { const m=state.models[Number($('model').value)]; state.levels=m?.intensities||[]; $('intensity').disabled=!state.levels.length; $('intensity').max=String(Math.max(0,state.levels.length-1));const index=state.levels.indexOf(preferred);const fallback=state.levels.indexOf('High');$('intensity').value=String(index>=0?index:fallback>=0?fallback:0);$('model-short').textContent=m?.name||'模型不可用';renderIntensity(); }
 async function loadApps() { const generation=++appsGeneration;try { const apps=await api('/apps');if(generation===appsGeneration&&Array.isArray(apps)){state.apps=apps;renderApps();} } catch(e) { if(generation===appsGeneration)toast('无法读取应用：'+e.message); } }
-async function init() { try { const status=await api('/status'); state.cwd=status.desktop; $('connection').querySelector('span').textContent=status.machine; } catch(e) { if(e.message!=='请先配对') toast(e.message); return; } await loadApps(); await loadModels(); }
-$('pair-form').onsubmit=async e=>{e.preventDefault();try{await api('/pair',{method:'POST',body:JSON.stringify({code:$('pair-code').value})});$('pair').classList.add('hidden');$('pair-error').textContent='';$('pair-code').value='';previousTrustToken=readTrustedToken();trustCandidate=null;$('trust-error').textContent='';$('trust-dialog').classList.remove('hidden');}catch(err){$('pair-error').textContent=err.message;}};
+function stopPresence() { presenceEnabled=false;clearTimeout(presenceRetry);clearInterval(presenceHeartbeat);presenceRetry=presenceHeartbeat=null;const ws=presenceSocket;presenceSocket=null;if(ws)ws.close(); }
+function startPresence() {
+  presenceEnabled=true;if(document.hidden||presenceSocket)return;
+  const ws=new WebSocket((location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/api/presence/connect');presenceSocket=ws;
+  ws.onopen=()=>{if(presenceSocket!==ws)return;ws.send(JSON.stringify({type:'heartbeat'}));presenceHeartbeat=setInterval(()=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'heartbeat'}));},15000);};
+  ws.onclose=()=>{if(presenceSocket!==ws)return;presenceSocket=null;clearInterval(presenceHeartbeat);presenceHeartbeat=null;if(!presenceEnabled)return;presenceRetry=setTimeout(async()=>{if(!presenceEnabled||document.hidden)return;try{await api('/status');startPresence();}catch(e){if(e.message==='请先配对')presenceEnabled=false;else startPresence();}},3000);};
+  ws.onerror=()=>ws.close();
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&presenceEnabled){if(presenceSocket){const ws=presenceSocket;presenceSocket=null;ws.close();}clearInterval(presenceHeartbeat);presenceHeartbeat=null;startPresence();}});
+window.addEventListener('pagehide',stopPresence);
+window.addEventListener('pageshow',event=>{if(event.persisted&&$('pair').classList.contains('hidden')&&$('trust-dialog').classList.contains('hidden'))void api('/status').then(()=>startPresence()).catch(()=>{});});
+async function init() { try { const status=await api('/status'); state.cwd=status.desktop; $('connection').querySelector('span').textContent=status.machine; startPresence(); } catch(e) { if(e.message!=='请先配对') toast(e.message); return; } await loadApps(); await loadModels(); }
+$('pair-form').onsubmit=async e=>{e.preventDefault();try{await api('/pair',{method:'POST',body:JSON.stringify({code:$('pair-code').value})});startPresence();$('pair').classList.add('hidden');$('pair-error').textContent='';$('pair-code').value='';previousTrustToken=readTrustedToken();trustCandidate=null;$('trust-error').textContent='';$('trust-dialog').classList.remove('hidden');}catch(err){$('pair-error').textContent=err.message;}};
 function declineTrust() {
   if(trustCandidate&&readTrustedToken()===trustCandidate){try{if(previousTrustToken)localStorage.setItem(trustStorageKey,previousTrustToken);else localStorage.removeItem(trustStorageKey);}catch{}}
   trustCandidate=null;previousTrustToken=null;$('trust-dialog').classList.add('hidden');void init();

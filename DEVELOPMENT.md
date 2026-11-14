@@ -9,9 +9,13 @@ npm install
 dotnet run --project src/HLG.Host
 ```
 
-npm 包安装后可直接运行 `neutrino-hlg`。该命令使用本机 .NET 10 SDK 构建并启动主机；终端静态资源在安装 npm 包时准备。
+npm 包安装时会准备终端资源、使用本机 .NET 10 SDK 在后台构建桌面主机，并创建“Neutrino HLG”开始菜单快捷方式。也可运行 `neutrino-hlg` 启动；若安装时尚未安装 SDK，首次启动会重新尝试构建。构建输出写入日志目录。
 
-主机启动时请求管理员权限，默认在 `0.0.0.0:8767` 监听 IPv4。未配置证书时使用 HTTP，手机与电脑在同一局域网时可访问 `http://<电脑的IPv4地址>:8767`；可以在电脑运行 `ipconfig` 查询地址。Windows 防火墙需要允许 TCP 8767 入站，`0.0.0.0` 是监听地址，不能作为手机访问地址。控制台显示配对码，10 分钟内有效，进程重启后会更换。
+在源码目录执行 `npm install` 会准备当前项目，但不会替换已经安装的全局 `neutrino-hlg` 命令。需要让全局命令使用当前源码时，可在项目目录执行 `npm install -g .`；安装后也可以直接从开始菜单打开“Neutrino HLG”。如果后台准备失败，安装过程会给出提示，构建详情可在日志目录中查看。
+
+主机启动时请求管理员权限，默认在 `0.0.0.0:8767` 监听 IPv4。未配置证书时使用 HTTP，手机与电脑在同一局域网时可访问 `http://<电脑的IPv4地址>:8767`。桌面界面显示配对码、可访问的 IPv4 地址和在线设备；配对码有效期为 10 分钟，可在窗口刷新。Windows 防火墙需要允许 TCP 8767 入站，`0.0.0.0` 是监听地址，不能作为手机访问地址。
+
+关闭窗口会收起到系统托盘；从托盘菜单选择“退出”可停止 HLG。主机日志写入 `~/.neutrino/hlg/logs/`（设置 `NEUTRINO_HOME` 时写入该目录的 `hlg/logs/`），每次运行按时间和进程号创建日志文件。已连接设备可在桌面界面断开；受信任设备断开后可在界面允许重新连接或取消信任。
 
 配对成功后可选择信任本设备。信任后，同一浏览器访问同一地址时可在主机重启后自动恢复连接，无需再次输入配对码；浏览器保存设备凭据，电脑仅在 `~/.neutrino/hlg/trusted-devices.json` 保存其哈希（设置 `NEUTRINO_HOME` 时使用该目录下的 `hlg/trusted-devices.json`）。清除浏览器站点数据、使用其他浏览器或地址，或删除电脑端信任记录后需要重新配对。删除该文件并重启 HLG 可撤销全部设备信任。
 
@@ -33,4 +37,4 @@ HLG 任务创建后在 `~/.neutrino/hlg/session/<任务ID>` 写入任务信息�
 
 模型列表直接从当前账户的 `~/.neutrino/model.json` 读取，首次选择参考同目录 `config.json`；打开模型设置和提交任务时会重新读取。设置了 `NEUTRINO_HOME` 时，HLG 和 neutrino 的本机 API 应使用相同目录。浏览器只接收提供商、模型名、是否配置密钥及支持的思考强度，API 密钥与接口地址不会发送到浏览器。创建和运行任务仍需要启动 neutrino 本机 API。
 
-从源码仓库运行测试：在 Windows 上执行 `dotnet run --project tests/HLG.TerminalSmoke` 可验证 ConPTY、窗口截图及 WebSocket 行为，`dotnet run --project tests/HLG.Conversations` 可验证会话恢复和排队等行为，`dotnet run --project tests/HLG.Windows` 可验证应用发现、图标和排序，`dotnet run --project tests/HLG.Network` 可验证网络监听，`dotnet run --project tests/HLG.Pairing` 可验证配对和信任恢复；`npm run test:remote-ui`、`npm run test:model-ui`、`npm run test:conversation-ui`、`npm run test:app-list-ui`、`npm run test:back-ui` 和 `npm run test:trust-ui` 使用已安装的 Microsoft Edge 验证手机界面。可用 `HLG_TEST_BROWSER` 指定其他兼容的 Chromium 浏览器路径。
+从源码仓库运行测试：在 Windows 上执行 `dotnet run --project tests/HLG.TerminalSmoke` 可验证 ConPTY、窗口截图及 WebSocket 行为，`dotnet run --project tests/HLG.Conversations` 可验证会话恢复和排队等行为，`dotnet run --project tests/HLG.Windows` 可验证应用发现、图标和排序，`dotnet run --project tests/HLG.Network` 可验证网络监听，`dotnet run --project tests/HLG.Pairing` 可验证配对和信任恢复，`dotnet run --project tests/HLG.Desktop` 可验证桌面界面和日志，`npm run test:desktop-launcher` 可验证桌面启动器；`npm run test:remote-ui`、`npm run test:model-ui`、`npm run test:conversation-ui`、`npm run test:app-list-ui`、`npm run test:back-ui` 和 `npm run test:trust-ui` 使用已安装的 Microsoft Edge 验证手机界面。可用 `HLG_TEST_BROWSER` 指定其他兼容的 Chromium 浏览器路径。

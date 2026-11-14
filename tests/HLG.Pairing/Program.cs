@@ -16,13 +16,16 @@ try {
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
-        var pairing = new PairingAuth(new TrustedDevices(path));
+        var devices = new DeviceConnections();
+        var pairing = new PairingAuth(new TrustedDevices(path), devices);
         await using var app = builder.Build();
         app.UseWebSockets();
         app.Use((HttpContext context, RequestDelegate next) => pairing.Handle(context, next));
         app.MapPost("/api/pair", (Func<HttpContext, Task<IResult>>)pairing.Pair);
         app.MapPost("/api/trust", (Func<HttpContext, Task<IResult>>)pairing.Trust);
         app.MapPost("/api/trust/restore", (Func<HttpContext, Task<IResult>>)pairing.Restore);
+        app.MapGet("/api/presence/connect", pairing.Presence);
+        app.MapGet("/api/screen/connect", pairing.Presence);
         app.MapGet("/api/protected", () => Results.Ok(new { ok = true }));
         app.MapGet("/api/socket", async (HttpContext context) => {
             if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }
@@ -50,6 +53,45 @@ try {
                 using (var invalid = await Send("/api/trust", new { token = "bad" }, cookie: previousCookie, origin: address)) Check(invalid.StatusCode == HttpStatusCode.BadRequest, "invalid token must fail");
                 using (var trusted = await Send("/api/trust", new { token }, cookie: previousCookie, origin: address)) Check(trusted.StatusCode == HttpStatusCode.OK, "trust registration failed");
                 Check(!File.ReadAllText(path).Contains(token, StringComparison.OrdinalIgnoreCase), "raw token stored on host");
+                using var secondPair = await Send("/api/pair", new { code = pairing.PairingCode }, origin: address);
+                var secondCookie = secondPair.Headers.GetValues("Set-Cookie").Single().Split(';')[0];
+                Check(previousCookie != secondCookie, "devices must receive independent sessions");
+                async Task<ClientWebSocket> Connect(string cookie, string route, string agent) {
+                    var ws = new ClientWebSocket();
+                    ws.Options.SetRequestHeader("Origin", address); ws.Options.SetRequestHeader("Cookie", cookie); ws.Options.SetRequestHeader("User-Agent", agent);
+                    await ws.ConnectAsync(new UriBuilder(address) { Scheme = "ws", Path = route }.Uri, CancellationToken.None);
+                    return ws;
+                }
+                using var firstSocket = await Connect(previousCookie, "/api/presence/connect", "iPhone Safari");
+                using var firstScreen = await Connect(previousCookie, "/api/screen/connect", "iPhone Safari");
+                using var secondSocket = await Connect(secondCookie, "/api/presence/connect", "Android Chrome");
+                for (var attempt = 0; attempt < 30 && devices.List().Count < 2; attempt++) await Task.Delay(50);
+                var list = devices.List();
+                Check(list.Count == 2, "separate devices must appear independently");
+                var firstDevice = list.Single(d => d.Trusted);
+                Check(firstDevice.Screen && firstDevice.Name == "iPhone", "device activity or identity missing");
+                devices.Disconnect(firstDevice.Id);
+                async Task CheckClosed(ClientWebSocket socket) {
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                    try { var message = await socket.ReceiveAsync(new byte[64].AsMemory(), timeout.Token); Check(message.MessageType == WebSocketMessageType.Close, "disconnected socket remained open"); }
+                    catch (WebSocketException) { }
+                    catch (OperationCanceledException) { throw new Exception("disconnected socket did not close"); }
+                }
+                await CheckClosed(firstSocket); await CheckClosed(firstScreen);
+                using (var closed = await Send("/api/protected", cookie: previousCookie)) Check(closed.StatusCode == HttpStatusCode.Unauthorized, "disconnected device remained authenticated");
+                using (var other = await Send("/api/protected", cookie: secondCookie)) Check(other.StatusCode == HttpStatusCode.OK, "disconnect affected another device");
+                using (var blocked = await Send("/api/trust/restore", new { token }, origin: address)) Check(blocked.StatusCode == HttpStatusCode.Forbidden, "disconnected trusted device reconnected immediately");
+                devices.Allow(firstDevice.Id);
+                using var allowed = await Send("/api/trust/restore", new { token }, origin: address);
+                Check(allowed.StatusCode == HttpStatusCode.OK, "allowed device could not reconnect");
+                var restoredCookie = allowed.Headers.GetValues("Set-Cookie").Single().Split(';')[0];
+                pairing.Revoke(firstDevice.Id);
+                using (var revoked = await Send("/api/trust/restore", new { token }, origin: address)) Check(revoked.StatusCode == HttpStatusCode.Unauthorized, "revoked device remained trusted");
+                using (var revokedSession = await Send("/api/protected", cookie: restoredCookie)) Check(revokedSession.StatusCode == HttpStatusCode.Unauthorized, "revoked session remained authenticated");
+                using var pairAgain = await Send("/api/pair", new { code = pairing.PairingCode }, origin: address);
+                var againCookie = pairAgain.Headers.GetValues("Set-Cookie").Single().Split(';')[0];
+                using var trustAgain = await Send("/api/trust", new { token }, cookie: againCookie, origin: address);
+                Check(trustAgain.StatusCode == HttpStatusCode.OK, "re-establish trust for restart test");
             } else {
                 using (var crossRestore = await Send("/api/trust/restore", new { token }, origin: "https://other.example")) Check(crossRestore.StatusCode == HttpStatusCode.Forbidden, "cross-origin restore must fail");
                 using (var invalid = await Send("/api/trust/restore", new { token = new string('A', 64) }, origin: address)) Check(invalid.StatusCode == HttpStatusCode.Unauthorized, "unknown device restored");

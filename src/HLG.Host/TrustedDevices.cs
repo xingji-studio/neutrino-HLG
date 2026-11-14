@@ -26,6 +26,7 @@ sealed class TrustedDevices
     public bool Available => !loadFailed;
     static bool ValidHex(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
     static string Digest(string token) => Convert.ToHexString(SHA256.HashData(Convert.FromHexString(token)));
+    public string? Identity(string? token) => ValidHex(token) ? Digest(token!) : null;
     public bool IsTrusted(string? token) {
         if (!ValidHex(token)) return false;
         var digest = Digest(token!);
@@ -45,6 +46,17 @@ sealed class TrustedDevices
                 File.Move(temp, path, true);
                 hashes.Add(hash);
             } finally { if (File.Exists(temp)) File.Delete(temp); }
+        }
+    }
+    public void Remove(string identity) {
+        lock (gate) {
+            if (loadFailed) throw new InvalidDataException("无法读取已有的设备信任记录。");
+            if (!hashes.Contains(identity)) return;
+            var next = hashes.Where(hash => hash != identity).ToArray();
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try { File.WriteAllText(temp, JsonSerializer.Serialize(next)); File.Move(temp, path, true); hashes.Remove(identity); }
+            finally { if (File.Exists(temp)) File.Delete(temp); }
         }
     }
 }

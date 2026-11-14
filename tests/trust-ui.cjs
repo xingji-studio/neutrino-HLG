@@ -17,6 +17,11 @@ const server = http.createServer((req,res)=>{
     const origin=`http://127.0.0.1:${server.address().port}/`;
     const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    await page.addInitScript(()=>{
+      window.__presenceSockets=[];
+      class MockWebSocket { static OPEN=1; constructor(url){this.url=url;this.readyState=1;window.__presenceSockets.push(this);setTimeout(()=>this.onopen?.(),0);} send(){} close(){this.readyState=3;this.onclose?.();} }
+      window.WebSocket=MockWebSocket;
+    });
     let session=false,storedToken=null,failTrust=true,restoreUnavailable=false,restores=0,trustCalls=[];
     await page.route('**/api/**',async route=>{
       const req=route.request(),url=new URL(req.url());let status=200,data={};
@@ -44,6 +49,7 @@ const server = http.createServer((req,res)=>{
     await page.locator('#pair-code').fill('123456');await page.locator('#pair-form button').click();
     await page.locator('#trust-dialog').waitFor({state:'visible'});
     assert.equal(await page.locator('#pair').isHidden(),true);
+    assert.match(await page.evaluate(()=>window.__presenceSockets[0].url),/\/api\/presence\/connect$/);
     await page.locator('#trust-accept').click();
     await page.waitForFunction(()=>document.getElementById('trust-error').textContent.includes('保存失败'));
     assert.equal(await page.locator('#trust-dialog').isVisible(),true);
