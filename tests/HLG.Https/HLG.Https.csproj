@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><UseWindowsForms>true</UseWindowsForms></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/HLG.Host/LocalHttpsCertificate.cs" Link="LocalHttpsCertificate.cs" />
+    <Compile Include="../../src/HLG.Host/CertificateSetup.cs" Link="CertificateSetup.cs" />
+    <Compile Include="../../src/HLG.Host/HttpsHosting.cs" Link="HttpsHosting.cs" />
+    <Compile Include="../../src/HLG.Host/HostBinding.cs" Link="HostBinding.cs" />
+    <Compile Include="../../src/HLG.Host/WebSocketEndpoints.cs" Link="WebSocketEndpoints.cs" />
+    <Compile Include="../../src/HLG.Host/DeviceConnections.cs" Link="DeviceConnections.cs" />
+    <Compile Include="../../src/HLG.Host/TrustedDevices.cs" Link="TrustedDevices.cs" />
+    <Compile Include="../../src/HLG.Host/PairingAuth.cs" Link="PairingAuth.cs" />
+    <Compile Include="../../src/HLG.Host/ScreenSession.cs" Link="ScreenSession.cs" />
+    <Compile Include="../../src/HLG.Host/Windows.cs" Link="Windows.cs" />
+    <Compile Include="../../src/HLG.Host/Terminal.cs" Link="Terminal.cs" />
+    <Compile Include="../../src/HLG.Host/SecureScreenSession.cs" Link="SecureScreenSession.cs" />
+    <Compile Include="../../src/HLG.Host/SecureDesktopHub.cs" Link="SecureDesktopHub.cs" />
+    <Compile Include="../../src/HLG.Host/SecureService.cs" Link="SecureService.cs" />
+    <Compile Include="../../src/HLG.Host/SecureSecretJson.cs" Link="SecureSecretJson.cs" />
+    <Compile Include="../../src/HLG.Host/UnlockSettings.cs" Link="UnlockSettings.cs" />
+    <Compile Include="../../src/HLG.Host/SessionLockState.cs" Link="SessionLockState.cs" />
+    <Compile Include="../../src/HLG.Host/FileLog.cs" Link="FileLog.cs" />
+  </ItemGroup>
+</Project>

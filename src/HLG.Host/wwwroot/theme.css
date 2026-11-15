@@ -38,6 +38,7 @@
 .remote-lock-state { position: absolute; top: 10px; right: 10px; padding: 6px 10px; border-radius: 20px; background: #202527df; color: #d7f2ff; font-size: 11px; }
 .remote-lock-state button { margin-left: 7px; border: 0; border-radius: 12px; padding: 5px 8px; background: var(--theme); color: #10232b; }
 .remote-menu button:disabled { opacity: .45; }
+.remote-canvas, .remote-canvas img { -webkit-touch-callout: none; user-select: none; }
 .remote-float { width: 44px; height: 44px; display: block; }
 .remote-ball { position: absolute; left: 0; top: 0; }
 .remote-float .remote-menu, .remote-float .remote-special { position: absolute; left: 0; bottom: calc(100% + 8px); width: max-content; }

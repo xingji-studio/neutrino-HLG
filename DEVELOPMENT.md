@@ -13,17 +13,21 @@ npm 包安装时会准备终端资源、使用本机 .NET 10 SDK 在后台构建
 
 在源码目录执行 `npm install` 会准备当前项目，但不会替换已经安装的全局 `neutrino-hlg` 命令。需要让全局命令使用当前源码时，可在项目目录执行 `npm install -g .`；安装后也可以直接从开始菜单打开“Neutrino HLG”。如果后台准备失败，安装过程会给出提示，构建详情可在日志目录中查看。
 
-主机启动时请求管理员权限，默认在 `0.0.0.0:8767` 监听 IPv4。未配置证书时使用 HTTP，手机与电脑在同一局域网时可访问 `http://<电脑的IPv4地址>:8767`。桌面界面显示配对码、可访问的 IPv4 地址和在线设备；配对码有效期为 10 分钟，可在窗口刷新。Windows 防火墙需要允许 TCP 8767 入站，`0.0.0.0` 是监听地址，不能作为手机访问地址。
+主机启动时请求管理员权限，默认在 `0.0.0.0:8767` 通过 HTTPS 监听 IPv4。访问同端口的 HTTP 页面时会自动跳转到 HTTPS，路径和查询参数保持不变；HTTP 表单提交等非页面请求不会被处理。首次启动会自动生成本机根证书，并在 TCP 8768 上提供仅含证书下载和安装说明的 HTTP 页面；文件、配对、远控和其他应用接口仅允许 HTTPS。桌面界面显示配对码、可访问的 HTTPS 地址和在线设备；配对码有效期为 10 分钟，可在窗口刷新。Windows 防火墙需要允许 TCP 8767 入站；需要手机从安装页面下载证书时还需允许 TCP 8768。`0.0.0.0` 是监听地址，不能作为手机访问地址。
 
 关闭窗口会收起到系统托盘；从托盘菜单选择“退出”可停止 HLG。主机日志写入 `~/.neutrino/hlg/logs/`（设置 `NEUTRINO_HOME` 时写入该目录的 `hlg/logs/`），每次运行按时间和进程号创建日志文件。已连接设备可在桌面界面断开；受信任设备断开后可在界面允许重新连接或取消信任。
 
-配对成功后可选择信任本设备。信任后，同一浏览器访问同一地址时可在主机重启后自动恢复连接，无需再次输入配对码。浏览器保存设备凭据，电脑只保存其哈希：HTTP 使用 `~/.neutrino/hlg/trusted-devices.json`，HTTPS 使用独立的 `trusted-devices-https.json`（设置 `NEUTRINO_HOME` 时使用该目录）。HTTP 凭据可能已经在网络中明文传输，因此不会直接用于 HTTPS 的远程解锁。
+配对成功后可选择信任本设备。信任后，同一浏览器访问同一 HTTPS 地址时可在主机重启后自动恢复连接，无需再次输入配对码。浏览器保存设备凭据，电脑只保存其哈希，记录位于 `~/.neutrino/hlg/trusted-devices-https.json`（设置 `NEUTRINO_HOME` 时使用该目录）。旧 HTTP 信任凭据可能已经在网络中明文传输，不会迁移到 HTTPS；从 HTTP 切换后需要重新配对或在电脑端确认信任。
 
 从 HTTP 换到 HTTPS、浏览器站点数据丢失或地址改变后，可在手机配对页面选择“在电脑端确认信任”，然后在电脑端“连接的设备”中核对设备和地址并允许，无需输入配对码。请在锁屏前完成首次确认。删除相应信任文件并重启 HLG 可撤销该协议下全部设备信任。
 
-HTTP 不加密配对码、会话和远控内容，建议只在可信局域网测试；跨公网访问应使用可信 HTTPS 或安全的私有网络，并正确配置防火墙和网络路由。将 PFX 文件路径和密码分别设置为 `HLG_HTTPS_CERT`、`HLG_HTTPS_PASSWORD` 后启动，可通过 HTTPS 访问同一端口。证书的主机名必须与手机访问地址匹配，且手机必须信任证书。不要提交证书和密码。
+首次连接时，在电脑端点击“手机首次连接”。手机与电脑连接同一网络后，打开显示的安装地址：Android 下载 `.cer`，在系统设置中选择安装 CA 证书；iPhone / iPad 下载描述文件，在设置中安装后，还需进入“通用 → 关于本机 → 证书信任设置”启用该证书的完全信任。不同设备和浏览器对用户安装的 CA 支持可能不同；若浏览器仍提示证书不可信，请勿绕过警告输入配对码。电脑上的浏览器首次打开 HTTPS 地址时，也需要单独信任本机根证书。
 
-远程解锁目前为测试功能。先配置上述 HTTPS 并通过托盘退出、重新启动 HLG，在电脑端“设置 → 远程解锁”中启用。启用时会将安全桌面组件安装到 `%ProgramFiles%\Neutrino HLG\SecureHost` 并注册按需启动的 `NeutrinoHLGSecureDesktop` Windows 服务；Web 服务和 Neutrino 仍在当前用户会话运行。手机访问受信任的 HTTPS 地址，电脑锁屏后“当前画面”会切换到登录画面，可使用触控板和键盘手动输入。服务运行需要当前物理控制台会话与 HLG 用户一致。
+安装页面本身使用 HTTP，可能被网络中的第三方篡改。安装前应在手机的证书详情中核对实际证书 SHA-256 指纹与电脑界面一致，不能仅凭安装页面显示的指纹确认；如果手机无法核对，请使用电脑界面的导出按钮并通过 USB 等可信方式把证书或 iPhone 描述文件传给手机。手机信任的是自建根 CA，安装前务必核对来源；不再需要时可在手机系统设置中移除。根 CA 私钥使用 Windows 当前用户的 DPAPI 加密保存在 `~/.neutrino/hlg/https/root-ca.dpapi`，不要分享该文件。删除或更换它会要求手机重新信任新证书；服务证书会针对实际连接的本机 IP 自动签发，因此更换 IP 后无需重新安装根证书，但浏览器会将不同地址视为不同站点。
+
+也可以继续将 PFX 文件路径和密码分别设置为 `HLG_HTTPS_CERT`、`HLG_HTTPS_PASSWORD` 后启动，此时使用自定义证书且不启动 8768 安装页面。证书必须覆盖手机访问的域名或 IP 并得到手机信任。跨公网访问仍需正确配置防火墙、网络路由和与访问地址匹配的证书，或使用安全的私有网络。不要提交证书私钥或密码。
+
+远程解锁目前为测试功能。手机信任上述 HTTPS 证书并完成配对后，在电脑端“设置 → 远程解锁”中启用。启用时会将安全桌面组件安装到 `%ProgramFiles%\Neutrino HLG\SecureHost` 并注册按需启动的 `NeutrinoHLGSecureDesktop` Windows 服务；Web 服务和 Neutrino 仍在当前用户会话运行。手机访问受信任的 HTTPS 地址，电脑锁屏后“当前画面”会切换到登录画面，可使用触控板和键盘手动输入。服务运行需要当前物理控制台会话与 HLG 用户一致。
 
 如需自动解锁，在电脑端设置中输入当前 Windows **账户密码**并启用自动输入。密码按当前 Windows 用户使用 DPAPI 加密保存在 `~/.neutrino/hlg/remote-unlock.json`，不会发送到手机；修改或重置 Windows 密码后可能需要重新设置。自动输入只在能够确认账户和密码框时进行，每次锁屏最多尝试一次，无法确认或尝试失败时请手动输入。手机端可选择“手动输入”取消当次自动操作。Windows Hello PIN、生物识别、其他登录提供程序以及企业策略不保证支持自动输入。
 
@@ -33,9 +37,9 @@ HTTP 不加密配对码、会话和远控内容，建议只在可信局域网测
 
 当前画面页面列出可见的任务栏风格窗口及其图标，支持激活、长按请求正常关闭、捕获选中的窗口或全部显示器。对于无法读取图标的程序会显示占位图。HLG 会尝试借助当前前台窗口的输入队列激活选中的窗口，但锁屏、安全桌面等情形仍可能被 Windows 拒绝；应用也可能弹出未保存内容提示。单窗口输入要求目标仍是前台窗口，指针点击和滚动还要求光标下的窗口属于目标；断开连接或丢失焦点时释放本连接按住的鼠标键。
 
-首版使用 `PrintWindow` 捕获单窗口、GDI 捕获虚拟桌面，并通过 WebSocket 发送 JPEG 帧，最大分辨率为 1600×1000、最高约 10 帧每秒；HTTP 页面使用 WS，HTTPS 页面使用 WSS。这不是规划中的 Windows Graphics Capture 和 WebRTC 视频方案。部分 GPU 加速、受保护、最小化窗口或安全桌面可能黑屏或无法捕获。单窗口模式不会退化为裁剪整个桌面。浏览器会尝试锁定横屏；不支持时需手动旋转手机。
+首版使用 `PrintWindow` 捕获单窗口、GDI 捕获虚拟桌面，并通过加密 WebSocket（WSS）发送 JPEG 帧，最大分辨率为 1600×1000、最高约 10 帧每秒。这不是规划中的 Windows Graphics Capture 和 WebRTC 视频方案。部分 GPU 加速、受保护、最小化窗口或安全桌面可能黑屏或无法捕获。单窗口模式不会退化为裁剪整个桌面。浏览器会尝试锁定横屏；不支持时需手动旋转手机。
 
-画面页提供触控板、直接点击、双指缩放、文字剪切板、屏幕键盘和组合键。电脑光标在画面内时显示指针，移出当前可视范围时显示指向光标的边缘箭头。缩放后触控板灵敏度随倍率降低，并比严格按倍率反比降低的速度略快；中文可通过“手机输入法”输入。电脑输入法的中英文切换取决于 Windows 当前输入法，Fn 为 F1–F12 功能层。手机复制剪切板需要受信任的 HTTPS 和浏览器授权。
+画面页提供触控板、直接触摸、双指缩放、文字剪切板、屏幕键盘和组合键。直接轻点画面相当于鼠标左键，长按后松开相当于右键；立即拖动会平移画面，按住约半秒后拖动则按住左键移动鼠标，可用于选择。电脑光标在画面内时显示指针，移出当前可视范围时显示指向光标的边缘箭头。缩放后触控板灵敏度随倍率降低，并比严格按倍率反比降低的速度略快；中文可通过“手机输入法”输入。电脑输入法的中英文切换取决于 Windows 当前输入法，Fn 为 F1–F12 功能层。手机复制剪切板需要受信任的 HTTPS 和浏览器授权。
 
 手机浏览器返回操作优先关闭弹层或返回应用内上一级；首页会留在应用内。文件浏览和目录选择按目录层级返回。
 
@@ -47,4 +51,4 @@ HLG 任务创建后在 `~/.neutrino/hlg/session/<任务ID>` 写入任务信息�
 
 模型列表直接从当前账户的 `~/.neutrino/model.json` 读取，首次选择参考同目录 `config.json`；打开模型设置和提交任务时会重新读取。设置了 `NEUTRINO_HOME` 时，HLG 和 neutrino 的本机 API 应使用相同目录。浏览器只接收提供商、模型名、是否配置密钥及支持的思考强度，API 密钥与接口地址不会发送到浏览器。创建和运行任务仍需要启动 neutrino 本机 API。
 
-从源码仓库运行测试：在 Windows 上执行 `dotnet run --project tests/HLG.TerminalSmoke` 可验证 ConPTY、窗口截图及 WebSocket 行为，`dotnet run --project tests/HLG.LockScreen` 可验证密码加密、进程间管道限制和 HTTPS 边界，`dotnet run --project tests/HLG.Conversations` 可验证会话恢复和排队等行为，`dotnet run --project tests/HLG.Windows` 可验证应用发现、图标和排序，`dotnet run --project tests/HLG.Network` 可验证网络监听，`dotnet run --project tests/HLG.Pairing` 可验证配对和信任恢复，`dotnet run --project tests/HLG.Desktop` 可验证桌面界面和日志，`npm run test:files` 可验证文件操作和下载，`npm run test:desktop-launcher` 可验证桌面启动器；`npm run test:remote-ui`、`npm run test:file-browser-ui`、`npm run test:model-ui`、`npm run test:conversation-ui`、`npm run test:app-list-ui`、`npm run test:back-ui` 和 `npm run test:trust-ui` 使用已安装的 Microsoft Edge 验证手机界面。可用 `HLG_TEST_BROWSER` 指定其他兼容的 Chromium 浏览器路径。上述自动测试不会安装系统服务或锁定电脑，不能替代真实锁屏测试。
+从源码仓库运行测试：在 Windows 上执行 `dotnet run --project tests/HLG.TerminalSmoke` 可验证 ConPTY、窗口截图及 WebSocket 行为，`dotnet run --project tests/HLG.LockScreen` 可验证密码加密、进程间管道限制和 HTTPS 边界，`npm run test:https` 可验证自动证书、配对、HTTP/1.1 和 HTTP/2 的 WSS 连接及安装页面隔离，`npm run test:https-browser` 还使用 Edge 验证 HTTPS 配对、设备在线和远控画面，`dotnet run --project tests/HLG.Conversations` 可验证会话恢复和排队等行为，`dotnet run --project tests/HLG.Windows` 可验证应用发现、图标和排序，`dotnet run --project tests/HLG.Network` 可验证网络监听，`dotnet run --project tests/HLG.Pairing` 可验证配对和信任恢复，`dotnet run --project tests/HLG.Desktop` 可验证桌面界面和日志，`npm run test:files` 可验证文件操作和下载，`npm run test:desktop-launcher` 可验证桌面启动器；`npm run test:remote-ui`、`npm run test:file-browser-ui`、`npm run test:model-ui`、`npm run test:conversation-ui`、`npm run test:app-list-ui`、`npm run test:back-ui` 和 `npm run test:trust-ui` 使用已安装的 Microsoft Edge 验证手机界面。可用 `HLG_TEST_BROWSER` 指定其他兼容的 Chromium 浏览器路径。上述自动测试不会安装系统服务、修改系统信任库或锁定电脑，不能替代真实手机和锁屏测试。

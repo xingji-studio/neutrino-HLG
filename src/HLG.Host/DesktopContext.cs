@@ -8,9 +8,9 @@ sealed class DesktopContext : ApplicationContext
     readonly NotifyIcon tray;
     readonly FileLog log;
     bool exiting;
-    public DesktopContext(WebApplication host, PairingAuth pairing, DeviceConnections devices, FileLog log, UnlockSettings unlock, bool https) {
+    public DesktopContext(WebApplication host, PairingAuth pairing, DeviceConnections devices, FileLog log, UnlockSettings unlock, LocalHttpsCertificate? certificate) {
         this.host = host; this.log = log;
-        form = new DashboardForm(pairing, devices, log, () => { using var settings = new UnlockSettingsForm(unlock, log, https); settings.ShowDialog(form); });
+        form = new DashboardForm(pairing, devices, log, () => { using var settings = new UnlockSettingsForm(unlock, log, true); settings.ShowDialog(form); }, certificate?.Fingerprint, certificate?.RootCertificate, certificate is null ? null : CertificateSetup.AppleProfile(certificate));
         MainForm = form;
         var menu = new ContextMenuStrip();
         menu.Items.Add("打开 Neutrino HLG", null, (_, _) => ShowWindow());
@@ -20,7 +20,7 @@ sealed class DesktopContext : ApplicationContext
         form.FormClosing += (_, e) => { if (!exiting && e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; form.Hide(); } };
         form.Shown += async (_, _) => {
             try { await host.StartAsync(); form.SetServerStatus(true, null); log.Write(LogLevel.Information, "主机", "服务已启动，监听端口 8767"); }
-            catch (Exception e) { log.Write(LogLevel.Error, "主机", "服务启动失败", e); form.SetServerStatus(false, e.Message); MessageBox.Show("服务启动失败，请检查端口 8767 是否被占用。\n详情请查看日志。", "Neutrino HLG", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+            catch (Exception e) { log.Write(LogLevel.Error, "主机", "服务启动失败", e); form.SetServerStatus(false, e.Message); MessageBox.Show(certificate is null ? "服务启动失败，请检查端口 8767 和 HTTPS 证书。\n详情请查看日志。" : "服务启动失败，请检查端口 8767 和 8768 是否被占用。\n详情请查看日志。", "Neutrino HLG", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         };
         form.Show();
     }

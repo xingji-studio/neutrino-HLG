@@ -29,7 +29,23 @@ static class Program
             form.Show(); Application.DoEvents(); Thread.Sleep(250); Application.DoEvents();
             static IEnumerable<Control> Descendants(Control parent) => parent.Controls.Cast<Control>().SelectMany(c => new[] { c }.Concat(Descendants(c)));
             var controls = Descendants(form).ToArray();
-            if (!controls.Any(c => c.Text.Contains("Android 设备")) || !controls.Any(c => c.Text == "断开连接") || !controls.Any(c => c.Text == "取消信任") || !controls.Any(c => c.Text == "设置")) throw new Exception("Connected device or settings controls missing.");
+            if (!controls.Any(c => c.Text.Contains("Android 设备")) || !controls.Any(c => c.Text == "断开连接") || !controls.Any(c => c.Text == "取消信任") || !controls.Any(c => c.Text == "设置") || !controls.Any(c => c.Text == "手机首次连接")) throw new Exception("Connected device, settings or certificate controls missing.");
+            Exception? setupError = null; bool inspected = false;
+            using var setupTimer = new System.Windows.Forms.Timer { Interval = 100 };
+            setupTimer.Tick += (_, _) => {
+                var setup = Application.OpenForms.Cast<Form>().FirstOrDefault(f => f.Text == "手机首次连接");
+                if (setup is null) return;
+                try {
+                    var fields = Descendants(setup).OfType<TextBox>().Select(c => c.Text).ToArray();
+                    if (!fields.Any(text => text.StartsWith("http://", StringComparison.Ordinal) && text.Contains(":8768/")) || !fields.Contains("TEST-FINGERPRINT")) throw new Exception("Certificate setup address or fingerprint missing.");
+                    if (args.Length >= 3) { using var preview = new Bitmap(setup.Width, setup.Height); setup.DrawToBitmap(preview, new Rectangle(Point.Empty, preview.Size)); preview.Save(args[2]); }
+                    inspected = true;
+                } catch (Exception e) { setupError = e; }
+                finally { setupTimer.Stop(); setup.Close(); }
+            };
+            setupTimer.Start(); ((Button)controls.Single(c => c.Text == "手机首次连接")).PerformClick();
+            if (setupError is not null) throw setupError;
+            if (!inspected) throw new Exception("Certificate setup dialog was not opened.");
             using var image = new Bitmap(form.Width, form.Height);
             form.DrawToBitmap(image, new Rectangle(Point.Empty, image.Size));
             if (args.Length >= 1) image.Save(args[0]);
@@ -44,6 +60,6 @@ static class Program
             Console.WriteLine("Desktop layout, code refresh and log redaction passed.");
         } finally { Directory.Delete(root, true); }
     }
-    sealed class PreviewForm(PairingAuth pairing, DeviceConnections devices, FileLog log) : DashboardForm(pairing, devices, log) { protected override bool ShowWithoutActivation => true; }
+    sealed class PreviewForm(PairingAuth pairing, DeviceConnections devices, FileLog log) : DashboardForm(pairing, devices, log, certificateFingerprint: "TEST-FINGERPRINT", rootCertificate: new byte[] { 1 }, appleProfile: new byte[] { 2 }) { protected override bool ShowWithoutActivation => true; }
     sealed class PreviewUnlockForm(UnlockSettings settings, FileLog log) : UnlockSettingsForm(settings, log, true) { protected override bool ShowWithoutActivation => true; }
 }

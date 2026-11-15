@@ -5,29 +5,32 @@ using System.Text.Json.Nodes;
 
 static class HostApplication
 {
-    public static WebApplication Create(string[] args, FileLog log, PairingAuth pairing, SecureDesktopHub secureDesktop)
+    public static WebApplication Create(string[] args, FileLog log, PairingAuth pairing, SecureDesktopHub secureDesktop, LocalHttpsCertificate? automaticCertificate)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory });
         var certPath = Environment.GetEnvironmentVariable("HLG_HTTPS_CERT");
         var certPassword = Environment.GetEnvironmentVariable("HLG_HTTPS_PASSWORD");
         const int port = 8767;
-        builder.WebHost.ConfigureKestrel(k => HostBinding.Configure(k, port, certPath, certPassword));
+        builder.WebHost.ConfigureKestrel(k => HttpsHosting.Configure(k, port, CertificateSetup.Port, automaticCertificate, certPath, certPassword));
         builder.Logging.ClearProviders();
         builder.Logging.AddProvider(log);
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
         var app = builder.Build();
+        // Port 8768 only serves the public certificate and installation guide;
+        // all application routes, credentials, and WebSockets require HTTPS.
+        app.Use((HttpContext context, RequestDelegate next) => HttpsHosting.Dispatch(context, next, automaticCertificate));
         app.UseWebSockets();
         app.Use((HttpContext context, RequestDelegate next) => pairing.Handle(context, next));
         app.UseDefaultFiles();
         app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache" });
         app.MapGet("/api/terminal/shells", () => Results.Ok(TerminalHost.Shells().Select(s => new { s.Id, s.Name })));
-        app.MapGet("/api/terminal/connect", TerminalHost.Handle);
+        WebSocketEndpoints.Map(app, "/api/terminal/connect", TerminalHost.Handle);
         app.MapGet("/api/windows", () => Results.Ok(WindowCatalog.List()));
         app.MapGet("/api/windows/icon", (string id, uint processId) => WindowCatalog.Icon(new WindowCatalog.WindowRequest(id, processId)));
         app.MapPost("/api/windows/activate", (WindowCatalog.WindowRequest request) => WindowCatalog.Activate(request));
         app.MapPost("/api/windows/close", (WindowCatalog.WindowRequest request) => WindowCatalog.Close(request));
-        app.MapGet("/api/screen/connect", (HttpContext context) => ScreenSession.Handle(context, () => secureDesktop.LockState == SessionLockState.Unlocked));
-        app.MapGet("/api/screen/secure/connect", (HttpContext context) => SecureScreenSession.Handle(context, secureDesktop));
+        WebSocketEndpoints.Map(app, "/api/screen/connect", context => ScreenSession.Handle(context, () => secureDesktop.LockState == SessionLockState.Unlocked));
+        WebSocketEndpoints.Map(app, "/api/screen/secure/connect", context => SecureScreenSession.Handle(context, secureDesktop));
         app.MapGet("/api/clipboard", async () => Results.Ok(new { text = await ScreenSession.ReadClipboard() }));
         app.MapPost("/api/clipboard", async (ClipboardRequest request) => { await ScreenSession.WriteClipboard(request.Text ?? ""); return Results.Ok(new { ok = true }); });
         app.MapPost("/api/pair", (Func<HttpContext, Task<IResult>>)pairing.Pair);
@@ -36,7 +39,7 @@ static class HostApplication
         app.MapPost("/api/trust/approval", (Func<HttpContext, Task<IResult>>)pairing.RequestApproval);
         app.MapPost("/api/trust/approval/status", (Func<HttpContext, Task<IResult>>)pairing.ApprovalStatus);
         app.MapPost("/api/trust/approval/cancel", (Func<HttpContext, Task<IResult>>)pairing.CancelApproval);
-        app.MapGet("/api/presence/connect", pairing.Presence);
+        WebSocketEndpoints.Map(app, "/api/presence/connect", pairing.Presence);
         app.MapGet("/api/status", () => Results.Ok(new { desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), machine = Environment.MachineName, locked = secureDesktop.LockState switch { SessionLockState.Locked => (bool?)true, SessionLockState.Unlocked => false, _ => null }, unlockAvailable = secureDesktop.Available }));
         var fileTransfers = new FileTransferService();
         app.MapPost("/api/fs/paste", fileTransfers.Paste);

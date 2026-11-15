@@ -80,7 +80,7 @@ async function windows(showLockedList = false) {
     const status=await api('/status');
     if(state.view!=='当前画面')return;
     if(status.locked===true){
-      if(!status.unlockAvailable){empty('电脑已锁定。请先在电脑端设置中启用远程解锁并配置 HTTPS。');return;}
+      if(!status.unlockAvailable){empty('电脑已锁定。请先在电脑端设置中启用远程解锁。');return;}
       if(showLockedList!==true){openRemote(null,{secure:true});return;}
       row('▣','登录画面','电脑已锁定',()=>openRemote(null,{secure:true}));return;
     }

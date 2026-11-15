@@ -11,5 +11,6 @@
     <Compile Include="../../src/HLG.Host/Terminal.cs" Link="Terminal.cs" />
     <Compile Include="../../src/HLG.Host/Windows.cs" Link="Windows.cs" />
     <Compile Include="../../src/HLG.Host/ScreenSession.cs" Link="ScreenSession.cs" />
+    <Compile Include="../../src/HLG.Host/WebSocketEndpoints.cs" Link="WebSocketEndpoints.cs" />
   </ItemGroup>
 </Project>

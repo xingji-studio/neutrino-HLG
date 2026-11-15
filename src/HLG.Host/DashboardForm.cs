@@ -14,6 +14,8 @@ class DashboardForm : Form
     readonly PairingAuth pairing;
     readonly DeviceConnections devices;
     readonly FileLog log;
+    readonly string? certificateFingerprint;
+    readonly byte[]? rootCertificate, appleProfile;
     readonly Label code = Label("", 30, FontStyle.Bold), expiry = Label("", 10, color: Muted), server = Label("正在启动…", 10, color: Muted), neutrino = Label("Neutrino · 检查中", 10, color: Muted), footer = Label("", 9, color: Muted), deviceCount = Label("0 台设备在线", 10, color: Muted);
     readonly ComboBox addresses = new() { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = ColorTranslator.FromHtml("#30383B"), ForeColor = TextColor, Font = new Font("Microsoft YaHei UI", 10) };
     readonly FlowLayoutPanel deviceList = new() { Dock = DockStyle.Fill, AutoScroll = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = CardColor, Padding = new Padding(0, 4, 12, 8) };
@@ -24,8 +26,8 @@ class DashboardForm : Form
     bool checking;
     record Address(string Label, string Url, int Priority = 0) { public override string ToString() => Label; }
 
-    public DashboardForm(PairingAuth pairing, DeviceConnections devices, FileLog log, Action? openSettings = null) {
-        this.pairing = pairing; this.devices = devices; this.log = log;
+    public DashboardForm(PairingAuth pairing, DeviceConnections devices, FileLog log, Action? openSettings = null, string? certificateFingerprint = null, byte[]? rootCertificate = null, byte[]? appleProfile = null) {
+        this.pairing = pairing; this.devices = devices; this.log = log; this.certificateFingerprint = certificateFingerprint; this.rootCertificate = rootCertificate; this.appleProfile = appleProfile;
         Text = "Neutrino HLG"; Icon = AppBrand.Icon; BackColor = Background; ForeColor = TextColor; Font = new Font("Microsoft YaHei UI", 10);
         MinimumSize = new Size(850, 620); Size = new Size(1040, 720); StartPosition = FormStartPosition.CenterScreen;
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28, 18, 28, 18), ColumnCount = 1, RowCount = 3, BackColor = Background };
@@ -72,11 +74,43 @@ class DashboardForm : Form
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, BackColor = CardColor };
         var copy = Button("复制地址", true); var open = Button("本机打开"); var logs = Button("日志目录");
         copy.Click += (_, _) => { if (addresses.SelectedItem is Address address) Copy(address.Url); };
-        open.Click += (_, _) => Open((string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("HLG_HTTPS_CERT")) ? "http" : "https") + "://localhost:8767");
+        open.Click += (_, _) => Open("https://localhost:8767");
         logs.Click += (_, _) => Open(Path.GetDirectoryName(log.Path)!);
         actions.Controls.Add(copy); actions.Controls.Add(open); actions.Controls.Add(logs);
-        t.Controls.Add(title, 0, 0); t.Controls.Add(note, 0, 1); t.Controls.Add(new Panel { Dock = DockStyle.Fill, BackColor = CardColor }, 0, 2); t.Controls.Add(addresses, 0, 3); t.Controls.Add(actions, 0, 4);
+        var setupArea = new FlowLayoutPanel { Dock = DockStyle.Fill, BackColor = CardColor, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+        if (certificateFingerprint is not null && rootCertificate is not null && appleProfile is not null) { var setup = Button("手机首次连接"); setup.Click += (_, _) => ShowCertificateSetup(); setupArea.Controls.Add(setup); }
+        else { var custom = Label("正在使用自定义 HTTPS 证书", 9, color: Muted); custom.AutoSize = true; setupArea.Controls.Add(custom); }
+        t.Controls.Add(title, 0, 0); t.Controls.Add(note, 0, 1); t.Controls.Add(setupArea, 0, 2); t.Controls.Add(addresses, 0, 3); t.Controls.Add(actions, 0, 4);
         return Card(t, new Padding(0, 8, 0, 0));
+    }
+    void ShowCertificateSetup() {
+        if (certificateFingerprint is null || rootCertificate is null || appleProfile is null) return;
+        var address = (addresses.SelectedItem as Address)?.Url ?? "https://127.0.0.1:8767";
+        var setupUrl = new UriBuilder("http", new Uri(address).Host, 8768).Uri.ToString();
+        using var dialog = new Form { Text = "手机首次连接", Icon = AppBrand.Icon, StartPosition = FormStartPosition.CenterParent, BackColor = Background, ForeColor = TextColor, Font = Font, ClientSize = new Size(650, 510), MinimumSize = new Size(620, 500) };
+        var content = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 8, AutoScroll = true, BackColor = Background };
+        foreach (var height in new[] { 38, 50, 26, 37, 27, 62, 115, 70 }) content.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
+        dialog.Controls.Add(content);
+        var title = Label("手机首次连接", 15, FontStyle.Bold, Theme); title.Dock = DockStyle.Fill; content.Controls.Add(title, 0, 0);
+        var intro = Label("手机与电脑连接同一网络后，打开下面的安装地址。安装并信任证书后，再访问 HTTPS 地址。", 9, color: Muted); intro.Dock = DockStyle.Fill; content.Controls.Add(intro, 0, 1);
+        var addressLabel = Label("证书安装地址", 9, FontStyle.Bold); addressLabel.Dock = DockStyle.Fill; content.Controls.Add(addressLabel, 0, 2);
+        var addressBox = new TextBox { Text = setupUrl, ReadOnly = true, Dock = DockStyle.Fill, BackColor = CardColor, ForeColor = TextColor, BorderStyle = BorderStyle.FixedSingle }; content.Controls.Add(addressBox, 0, 3);
+        var fingerprintLabel = Label("本机根证书 SHA-256 指纹", 9, FontStyle.Bold); fingerprintLabel.Dock = DockStyle.Fill; content.Controls.Add(fingerprintLabel, 0, 4);
+        var fingerprintBox = new TextBox { Text = certificateFingerprint, ReadOnly = true, Multiline = true, Dock = DockStyle.Fill, BackColor = CardColor, ForeColor = TextColor, BorderStyle = BorderStyle.FixedSingle }; content.Controls.Add(fingerprintBox, 0, 5);
+        var note = Label("安装地址使用 HTTP。请核对手机证书详情中的指纹与上方一致；如果手机无法显示指纹，请导出证书并通过 USB 等可信方式传输。iPhone 安装描述文件后还需在“证书信任设置”中启用完全信任。", 9, color: Muted); note.Dock = DockStyle.Fill; content.Controls.Add(note, 0, 6);
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, WrapContents = true, BackColor = Background };
+        var copyUrl = Button("复制安装地址", true); copyUrl.Click += (_, _) => Copy(setupUrl);
+        var copyFingerprint = Button("复制指纹"); copyFingerprint.Click += (_, _) => Copy(certificateFingerprint);
+        var export = Button("导出证书"); export.Click += (_, _) => ExportCertificate(rootCertificate, "neutrino-hlg-root.cer", "证书文件|*.cer");
+        var exportApple = Button("导出 iPhone 描述文件"); exportApple.Click += (_, _) => ExportCertificate(appleProfile, "neutrino-hlg.mobileconfig", "Apple 描述文件|*.mobileconfig");
+        actions.Controls.AddRange(new Control[] { copyUrl, copyFingerprint, export, exportApple }); content.Controls.Add(actions, 0, 7);
+        dialog.ShowDialog(this);
+    }
+    void ExportCertificate(byte[] data, string filename, string filter) {
+        using var dialog = new SaveFileDialog { FileName = filename, Filter = filter, AddExtension = true, OverwritePrompt = true };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        try { File.WriteAllBytes(dialog.FileName, data); footer.Text = "证书已导出"; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException) { log.Write(LogLevel.Error, "HTTPS", "导出证书失败", e); MessageBox.Show("无法导出证书，请查看日志。", Text, MessageBoxButtons.OK, MessageBoxIcon.Error); }
     }
     Control DevicesCard() {
         var t = Content(3); t.RowStyles.Add(new RowStyle(SizeType.Absolute, 35)); t.RowStyles.Add(new RowStyle(SizeType.Absolute, 28)); t.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -85,7 +119,7 @@ class DashboardForm : Form
     }
     void RefreshCode() { var remaining = pairing.PairingExpires - DateTimeOffset.UtcNow; code.Text = pairing.PairingCode.Insert(3, "  "); expiry.Text = pairing.PairingLocked ? "尝试次数已用尽，请刷新配对码" : remaining > TimeSpan.Zero ? $"有效期剩余 {Math.Max(0, (int)Math.Ceiling(remaining.TotalMinutes))} 分钟" : "配对码已过期，请刷新"; }
     void RefreshAddresses() {
-        var scheme = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("HLG_HTTPS_CERT")) ? "http" : "https";
+        const string scheme = "https";
         var list = new List<Address>();
         try {
             foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces().Where(i => i.OperationalStatus == OperationalStatus.Up && i.NetworkInterfaceType != NetworkInterfaceType.Loopback)) {
