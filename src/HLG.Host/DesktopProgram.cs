@@ -35,6 +35,9 @@ static class DesktopProgram
         FileLog? log = null;
         try {
             log = new FileLog(Path.Combine(NeutrinoPaths.Home, "hlg", "logs"));
+            var autoStart = new AutoStartRegistration();
+            try { autoStart.RefreshIfEnabled(); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or TimeoutException or System.Runtime.InteropServices.COMException or System.Security.SecurityException) { log.Write(LogLevel.Warning, "开机自启", "无法更新自启程序，将继续使用上次的版本", e); }
             using var currentIdentity = WindowsIdentity.GetCurrent();
             var userId = currentIdentity.User?.Value ?? Environment.UserName;
             var name = @"Local\NeutrinoHLG-" + userId;
@@ -61,7 +64,7 @@ static class DesktopProgram
             using var secureDesktop = new SecureDesktopHub(unlock, log, true);
             _ = Task.Run(() => { try { if (unlock.Read().Enabled) SecureService.InstallAndStart(); } catch (Exception e) { capturedLog.Write(LogLevel.Error, "远程解锁", "无法启动安全桌面服务", e); } });
             var host = HostApplication.Create(args, log, pairing, secureDesktop, localCertificate);
-            using var context = new DesktopContext(host, pairing, devices, log, unlock, localCertificate);
+            using var context = new DesktopContext(host, pairing, devices, log, unlock, autoStart, localCertificate);
             var registration = ThreadPool.RegisterWaitForSingleObject(show, (_, _) => context.ShowWindow(), null, Timeout.Infinite, false);
             log.Write(LogLevel.Information, "主机", "正在启动桌面控制面板");
             try { Application.Run(context); } finally { registration.Unregister(null); }

@@ -12,6 +12,7 @@ let detailTimer, detailGeneration=0, detailRefresh=null, detailPrevious=null, de
 const conversationDrafts=new Map();
 const fileClipboardKey='hlg.file-clipboard.v1';
 let fileClipboard=readFileClipboard(),fileMenuTarget=null,filePastePending=false,fileMenuPointerStarted=false;
+let fileOpenTarget=null,fileExecutableTarget=null,fileOpenPending=false;
 function readFileClipboard(){try{const value=JSON.parse(sessionStorage.getItem(fileClipboardKey)||'null');return value&&typeof value.path==='string'&&typeof value.name==='string'&&typeof value.directory==='boolean'&&['copy','cut'].includes(value.operation)?value:null;}catch{return null;}}
 function saveFileClipboard(value){fileClipboard=value;try{if(value)sessionStorage.setItem(fileClipboardKey,JSON.stringify(value));else sessionStorage.removeItem(fileClipboardKey);}catch{}updateFilePasteControls();}
 function closeTerminal() { if (!terminalSession) return; const session=terminalSession; terminalSession=null; session.observer?.disconnect(); session.socket?.close(); session.term?.dispose(); }
@@ -54,8 +55,8 @@ function leaveTaskDetail() {
   if(detailPrevious){const i=state.models.findIndex(m=>m.provider===detailPrevious.provider&&m.name===detailPrevious.model);if(i>=0){$('model').value=String(i);updateLevels(detailPrevious.intensity);}$('mode').value=detailPrevious.mode;modelSelectionChanged=detailPrevious.changed;detailPrevious=null;}
   collapseComposer();
 }
-function openPage(title) { filesGeneration++;closeFileMenu();if(title!=='任务详情')leaveTaskDetail(); closeTerminal(); state.view = title; const picker=title==='选择工作目录';$('back').setAttribute('aria-label',picker?'关闭选择目录':'返回');$('back').replaceChildren(arrowIcon(picker?'close':'left'));$('composer').classList.toggle('hidden', title==='终端'); $('home').classList.add('hidden'); $('page').classList.remove('hidden'); $('toolbar').classList.remove('hidden'); $('page-title').textContent = title; $('title').classList.add('hidden'); $('page').replaceChildren(); }
-function home() { filesGeneration++;closeFileMenu();leaveTaskDetail();closeTerminal(); state.view = 'home'; state.picker = false; $('composer').classList.remove('hidden'); $('home').classList.remove('hidden'); $('page').classList.add('hidden'); $('toolbar').classList.add('hidden'); $('title').classList.remove('hidden'); void loadApps(); }
+function openPage(title) { filesGeneration++;closeFileMenu();closeFileOpenMenu();if(title!=='选择应用程序')fileExecutableTarget=null;if(title!=='任务详情')leaveTaskDetail(); closeTerminal(); state.view = title; const picker=title==='选择工作目录';$('back').setAttribute('aria-label',picker?'关闭选择目录':'返回');$('back').replaceChildren(arrowIcon(picker?'close':'left'));$('composer').classList.toggle('hidden', title==='终端'); $('home').classList.add('hidden'); $('page').classList.remove('hidden'); $('toolbar').classList.remove('hidden'); $('page-title').textContent = title; $('title').classList.add('hidden'); $('page').replaceChildren(); }
+function home() { filesGeneration++;closeFileMenu();closeFileOpenMenu();fileExecutableTarget=null;leaveTaskDetail();closeTerminal(); state.view = 'home'; state.picker = false; $('composer').classList.remove('hidden'); $('home').classList.remove('hidden'); $('page').classList.add('hidden'); $('toolbar').classList.add('hidden'); $('title').classList.remove('hidden'); void loadApps(); }
 function row(icon, title, subtitle, action) { const b = element('button','row'), iconEl=element('span','row-icon');if(icon instanceof Node)iconEl.append(icon);else if(icon==='arrow-up')iconEl.append(arrowIcon('up'));else iconEl.textContent=icon;b.append(iconEl); const info=element('span','row-text'); info.append(element('strong','',title),element('small','',subtitle || '')); b.append(info,arrowIcon('chevron','row-arrow')); b.addEventListener('click',action); $('page').append(b); return b; }
 function empty(text) { $('page').append(element('div','empty',text)); }
 const builtin = [{name:'文件浏览', icon:'▱', action:()=>files(null)}, {name:'终端', icon:'⌘', action:terminal}, {name:'任务列表', icon:'☷', action:tasks}, {name:'当前画面', icon:'▣', action:windows}];
@@ -194,21 +195,61 @@ $('file-menu-download').onclick=()=>closeFileMenu();
 $('file-copy-retry').onclick=()=>copyPhonePath($('file-copy-text').value,true);
 $('file-copy-close').onclick=()=>$('file-copy-dialog').classList.add('hidden');
 $('file-copy-dialog').addEventListener('click',event=>{if(event.target===$('file-copy-dialog'))$('file-copy-dialog').classList.add('hidden');});
-async function files(path) {
-  const view=state.picker?'选择工作目录':'文件浏览';openPage(view);const generation=filesGeneration;
+function closeFileOpenMenu(){$('file-open-menu').classList.add('hidden');fileOpenTarget=null;}
+function renderFileOpenMenu(target){
+  if(fileOpenTarget!==target)return;
+  const actions=$('file-open-actions');actions.replaceChildren();
+  const button=(name,detail,handler,disabled=false)=>{const b=element('button','file-open-choice');b.type='button';b.disabled=disabled||fileOpenPending;b.append(element('strong','',name));if(detail)b.append(element('small','',detail));b.onclick=handler;actions.append(b);return b;};
+  const defaultApp=target.options?.defaultApp;
+  button(defaultApp?.name||(!target.loaded?'正在读取默认应用…':target.error?'无法读取默认应用':'未设置默认应用'),'默认应用',()=>void openFileWith(target,{kind:'default'}),!defaultApp);
+  const download=element('a','file-open-choice');download.href='/api/fs/download?path='+encodeURIComponent(target.item.path);download.download=target.item.name;download.append(element('strong','','下载至手机'));download.onclick=closeFileOpenMenu;actions.append(download);
+  for(const app of target.options?.recommended||[])button(app.name,'推荐应用',()=>void openFileWith(target,{kind:'recommended',handlerId:app.id}));
+  if(target.error)actions.append(element('p','file-open-error',target.error));
+  button('其他应用','选择电脑上的 .exe 程序',()=>{target.pickerParents=new Map([[target.directory,state.parentPath]]);fileExecutableTarget=target;closeFileOpenMenu();void files(target.directory);});
+}
+async function showFileOpenMenu(item,directory){
+  const target={item,directory,loaded:false,options:null,error:null};fileOpenTarget=target;$('file-open-name').textContent='打开 '+item.name;$('file-open-menu').classList.remove('hidden');renderFileOpenMenu(target);
+  try{target.options=await api('/fs/open-options?path='+encodeURIComponent(item.path));}catch(error){target.error=error.message;}
+  target.loaded=true;renderFileOpenMenu(target);
+}
+async function openFileWith(target,selection){
+  if(fileOpenPending)return;fileOpenPending=true;renderFileOpenMenu(target);
+  try{await api('/fs/open',{method:'POST',body:JSON.stringify({path:target.item.path,...selection})});if(fileOpenTarget===target)closeFileOpenMenu();toast('已在电脑上打开文件');}
+  catch(error){toast(error.message);}
+  finally{fileOpenPending=false;if(fileOpenTarget)renderFileOpenMenu(fileOpenTarget);}
+}
+async function returnFromExecutablePicker(reopen){
+  const target=fileExecutableTarget;if(!target)return;fileExecutableTarget=null;await files(target.directory);
+  if(reopen&&state.view==='文件浏览'&&state.path===target.directory)void showFileOpenMenu(target.item,target.directory);
+}
+async function selectExecutable(executable){
+  const target=fileExecutableTarget;if(!target||fileOpenPending)return;fileOpenPending=true;
+  try{await api('/fs/open',{method:'POST',body:JSON.stringify({path:target.item.path,kind:'executable',executable})});if(fileExecutableTarget===target)await returnFromExecutablePicker(false);toast('已在电脑上打开文件');}
+  catch(error){toast(error.message);}
+  finally{fileOpenPending=false;if(fileOpenTarget)renderFileOpenMenu(fileOpenTarget);}
+}
+$('file-open-close').onclick=closeFileOpenMenu;
+$('file-open-menu').addEventListener('click',event=>{if(event.target===$('file-open-menu'))closeFileOpenMenu();});
+async function files(path,parentHint=null) {
+  const selectingExecutable=!!fileExecutableTarget,view=state.picker?'选择工作目录':selectingExecutable?'选择应用程序':'文件浏览';openPage(view);const generation=filesGeneration;
+  if(selectingExecutable){state.path=path||null;state.parentPath=fileExecutableTarget.pickerParents.get(path)||parentHint||null;}
+  if(selectingExecutable){const cancel=element('button','file-picker-cancel','取消选择应用');cancel.type='button';cancel.onclick=()=>void returnFromExecutablePicker(true);$('page').append(cancel);}
   try {
     const data=await api('/fs'+(path?'?path='+encodeURIComponent(path):''));
     if(generation!==filesGeneration||state.view!==view)return;
-    state.path=data.path||path;state.parentPath=data.parent||null;
+    state.path=data.path||path;state.parentPath=data.parent||null;if(selectingExecutable&&data.path)fileExecutableTarget.pickerParents.set(data.path,state.parentPath);
+    if(selectingExecutable&&data.path)$('page').append(element('div','file-picker-path',data.path));
     if(data.roots) { for(const root of data.roots) row('▤',root.name,root.ready ? root.type : '不可访问',()=>files(root.name)); }
     else {
       if(state.picker) { const pick=element('button','primary','选择此目录'); pick.onclick=()=>{state.cwd=data.path;$('directory').querySelector('span').textContent=data.path;state.picker=false;home();}; $('page').append(pick); }
-      else {
+      else if(!selectingExecutable) {
         const bar=element('div','file-directory-bar'),label=element('span','file-directory-path',data.path),copy=element('button','','复制目录路径'),paste=element('button','','粘贴至当前目录');
         copy.type=paste.type='button';copy.onclick=()=>copyPhonePath(data.path);paste.dataset.filePaste='';paste.onclick=()=>void pasteIntoDirectory(data.path);bar.append(label,copy,paste);$('page').append(bar);updateFilePasteControls();
       }
       row('arrow-up','上一级',data.parent || '所有位置',()=>files(data.parent));
-      for(const item of data.entries){const button=row(item.directory?'▱':'▤',item.name,item.directory?'文件夹':'文件',()=>{if(button.dataset.longPressed==='true'){button.dataset.longPressed='false';return;}if(item.directory)void files(item.path);else toast('文件预览尚未实现');});if(!state.picker)attachFileMenu(button,item,data.path,generation);}
+      let shown=0;
+      for(const item of data.entries){if(selectingExecutable&&!item.directory&&!/\.exe$/i.test(item.name))continue;shown++;const button=row(item.directory?'▱':'▤',item.name,item.directory?'文件夹':selectingExecutable?'应用程序':'文件',()=>{if(button.dataset.longPressed==='true'){button.dataset.longPressed='false';return;}if(item.directory)void files(item.path,data.path);else if(selectingExecutable)void selectExecutable(item.path);else void showFileOpenMenu(item,data.path);});if(!state.picker&&!selectingExecutable)attachFileMenu(button,item,data.path,generation);}
+      if(selectingExecutable&&!shown)empty('此目录中没有文件夹或 .exe 应用程序。');
     }
   } catch(e){if(generation===filesGeneration&&state.view===view)empty(e.message);}
 }
@@ -363,6 +404,7 @@ function navigateBack() {
   if(!$('pair').classList.contains('hidden')){toast('请先完成配对');return;}
   if(!$('file-copy-dialog').classList.contains('hidden')){$('file-copy-dialog').classList.add('hidden');return;}
   if(!$('file-menu').classList.contains('hidden')){closeFileMenu();return;}
+  if(!$('file-open-menu').classList.contains('hidden')){closeFileOpenMenu();return;}
   if(!$('remote-text-dialog').classList.contains('hidden')){$('remote-text-dialog').classList.add('hidden');return;}
   if(!$('clipboard-dialog').classList.contains('hidden')){$('clipboard-dialog').classList.add('hidden');return;}
   if(!$('remote-view').classList.contains('hidden')){
@@ -372,6 +414,7 @@ function navigateBack() {
   }
   if(!$('settings-panel').classList.contains('hidden')){$('settings-panel').classList.add('hidden');return;}
   if(state.view==='任务详情'){void tasks();return;}
+  if(state.view==='选择应用程序'){if(state.path)void files(state.parentPath);else void returnFromExecutablePicker(true);return;}
   if((state.view==='文件浏览'||state.view==='选择工作目录')&&state.path){void files(state.parentPath);return;}
   if(state.view!=='home'){home();return;}
   if($('composer').classList.contains('expanded')){collapseComposer();return;}
@@ -382,10 +425,10 @@ try {
   history.pushState({hlgBackGuard:true},'');
   window.addEventListener('popstate',()=>{navigateBack();history.pushState({hlgBackGuard:true},'');});
 } catch { /* History can be unavailable in restricted browser contexts. */ }
-$('directory').onclick=()=>{state.picker=true;files(state.cwd||null);};
+$('directory').onclick=()=>{fileExecutableTarget=null;state.picker=true;files(state.cwd||null);};
 $('settings').onclick=()=>{const panel=$('settings-panel');panel.classList.toggle('hidden');if(!panel.classList.contains('hidden')){const taskId=state.taskId;void loadModels().then(ok=>{if(ok&&taskId!==null&&state.taskId===taskId&&state.taskSnapshot)syncConversationSettings(state.taskSnapshot);});}};
 document.addEventListener('pointerdown',event=>{const panel=$('settings-panel');if(!panel.classList.contains('hidden')&&!panel.contains(event.target)&&!$('settings').contains(event.target))panel.classList.add('hidden');});
-document.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!$('file-copy-dialog').classList.contains('hidden'))$('file-copy-dialog').classList.add('hidden');else if(!$('file-menu').classList.contains('hidden'))closeFileMenu();else $('settings-panel').classList.add('hidden');}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!$('file-copy-dialog').classList.contains('hidden'))$('file-copy-dialog').classList.add('hidden');else if(!$('file-menu').classList.contains('hidden'))closeFileMenu();else if(!$('file-open-menu').classList.contains('hidden'))closeFileOpenMenu();else $('settings-panel').classList.add('hidden');}});
 $('model').onchange=()=>{modelSelectionChanged=true;if(state.taskId!==null)detailDirty.model=true;updateLevels();};
 $('intensity').oninput=()=>{modelSelectionChanged=true;if(state.taskId!==null)detailDirty.model=true;renderIntensity();};
 $('mode').onchange=()=>{if(state.taskId!==null)detailDirty.mode=true;};

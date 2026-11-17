@@ -17,6 +17,8 @@ npm 包安装时会准备终端资源、使用本机 .NET 10 SDK 在后台构建
 
 关闭窗口会收起到系统托盘；从托盘菜单选择“退出”可停止 HLG。主机日志写入 `~/.neutrino/hlg/logs/`（设置 `NEUTRINO_HOME` 时写入该目录的 `hlg/logs/`），每次运行按时间和进程号创建日志文件。已连接设备可在桌面界面断开；受信任设备断开后可在界面允许重新连接或取消信任。
 
+可在电脑端“设置 → 常规”打开“开机自启”，开关立即生效。HLG 会为当前 Windows 用户创建以最高权限运行的登录计划任务，并将所需程序文件复制到 `%ProgramFiles%\Neutrino HLG\AutoStart`；关闭开关会删除该任务。HLG 在用户登录后启动，不会在登录之前提供远控。更新 HLG 后正常启动一次新版，即会同步更新已启用的自启任务。自启进程使用 Windows 用户或系统中持久设置的环境变量，不会继承临时命令行窗口中的变量。
+
 配对成功后可选择信任本设备。信任后，同一浏览器访问同一 HTTPS 地址时可在主机重启后自动恢复连接，无需再次输入配对码。浏览器保存设备凭据，电脑只保存其哈希，记录位于 `~/.neutrino/hlg/trusted-devices-https.json`（设置 `NEUTRINO_HOME` 时使用该目录）。旧 HTTP 信任凭据可能已经在网络中明文传输，不会迁移到 HTTPS；从 HTTP 切换后需要重新配对或在电脑端确认信任。
 
 从 HTTP 换到 HTTPS、浏览器站点数据丢失或地址改变后，可在手机配对页面选择“在电脑端确认信任”，然后在电脑端“连接的设备”中核对设备和地址并允许，无需输入配对码。请在锁屏前完成首次确认。删除相应信任文件并重启 HLG 可撤销该协议下全部设备信任。
@@ -52,3 +54,5 @@ HLG 任务创建后在 `~/.neutrino/hlg/session/<任务ID>` 写入任务信息�
 模型列表直接从当前账户的 `~/.neutrino/model.json` 读取，首次选择参考同目录 `config.json`；打开模型设置和提交任务时会重新读取。设置了 `NEUTRINO_HOME` 时，HLG 和 neutrino 的本机 API 应使用相同目录。浏览器只接收提供商、模型名、是否配置密钥及支持的思考强度，API 密钥与接口地址不会发送到浏览器。创建和运行任务仍需要启动 neutrino 本机 API。
 
 从源码仓库运行测试：在 Windows 上执行 `dotnet run --project tests/HLG.TerminalSmoke` 可验证 ConPTY、窗口截图及 WebSocket 行为，`dotnet run --project tests/HLG.LockScreen` 可验证密码加密、进程间管道限制和 HTTPS 边界，`npm run test:https` 可验证自动证书、配对、HTTP/1.1 和 HTTP/2 的 WSS 连接及安装页面隔离，`npm run test:https-browser` 还使用 Edge 验证 HTTPS 配对、设备在线和远控画面，`dotnet run --project tests/HLG.Conversations` 可验证会话恢复和排队等行为，`dotnet run --project tests/HLG.Windows` 可验证应用发现、图标和排序，`dotnet run --project tests/HLG.Network` 可验证网络监听，`dotnet run --project tests/HLG.Pairing` 可验证配对和信任恢复，`dotnet run --project tests/HLG.Desktop` 可验证桌面界面和日志，`npm run test:files` 可验证文件操作和下载，`npm run test:desktop-launcher` 可验证桌面启动器；`npm run test:remote-ui`、`npm run test:file-browser-ui`、`npm run test:model-ui`、`npm run test:conversation-ui`、`npm run test:app-list-ui`、`npm run test:back-ui` 和 `npm run test:trust-ui` 使用已安装的 Microsoft Edge 验证手机界面。可用 `HLG_TEST_BROWSER` 指定其他兼容的 Chromium 浏览器路径。上述自动测试不会安装系统服务、修改系统信任库或锁定电脑，不能替代真实手机和锁屏测试。
+
+`npm run test:autostart` 会检查自启配置和程序副本，并创建、删除一个临时的低权限计划任务；以管理员身份运行时还会检查受保护的最高权限任务注册。此测试不重启电脑。

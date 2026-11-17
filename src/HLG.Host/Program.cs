@@ -44,6 +44,9 @@ static class HostApplication
         var fileTransfers = new FileTransferService();
         app.MapPost("/api/fs/paste", fileTransfers.Paste);
         app.MapGet("/api/fs/download", fileTransfers.Download);
+        var fileOpen = new FileOpenService();
+        app.MapGet("/api/fs/open-options", fileOpen.Options);
+        app.MapPost("/api/fs/open", fileOpen.Open);
         app.MapGet("/api/fs", (string? path) => {
             try {
                 if (string.IsNullOrWhiteSpace(path)) return Results.Ok(new { roots = DriveInfo.GetDrives().Select(d => new { name = d.Name, type = d.DriveType.ToString(), ready = d.IsReady }) });

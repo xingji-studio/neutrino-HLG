@@ -59,6 +59,12 @@
 .file-menu-actions { display: grid; gap: 3px; }
 .file-menu-actions button, .file-menu-actions a { display: block; width: 100%; border: 0; border-radius: 12px; background: transparent; color: #eef4f4; padding: 13px 12px; text-align: left; text-decoration: none; font-size: 14px; }
 .file-menu-actions button:active, .file-menu-actions a:active { background: #344349; }
+.file-open-actions .file-open-choice { display: flex; flex-direction: column; gap: 4px; }
+.file-open-choice strong { font-size: 14px; font-weight: 600; }
+.file-open-choice small { color: #aebabc; font-size: 12px; }
+.file-open-error { margin: 4px 12px; color: #e8ada8; font-size: 12px; }
+.file-picker-cancel { margin: 0 0 12px; padding: 9px 12px; border: 1px solid #465158; border-radius: 10px; color: #d3eaf2; background: #202a2e; }
+.file-picker-path { margin: 0 2px 10px; color: #aebabc; font-size: 12px; overflow-wrap: anywhere; }
 .file-copy-dialog textarea { width: 100%; resize: vertical; background: #15191a; color: #eef4f4; border: 1px solid #465158; border-radius: 12px; padding: 12px; margin: 4px 0 12px; font: 13px/1.5 system-ui; }
 
 /* Neutrino's model-intensity slider, retaining its geometry and interaction states. */

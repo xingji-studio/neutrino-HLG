@@ -42,13 +42,16 @@
     "test:app-list-ui": "node tests/app-list-ui.cjs",
     "test:back-ui": "node tests/back-ui.cjs",
     "test:file-browser-ui": "node tests/file-browser-ui.cjs",
+    "test:file-open-ui": "node tests/file-open-ui.cjs",
+    "test:open-with": "dotnet run --project tests/HLG.OpenWith",
     "test:files": "dotnet run --project tests/HLG.Files",
     "test:trust-ui": "node tests/trust-ui.cjs",
     "test:https": "dotnet run --project tests/HLG.Https",
     "test:https-browser": "dotnet run --project tests/HLG.Https -- --browser",
     "test:lock-screen": "dotnet run --project tests/HLG.LockScreen",
     "prepare:desktop": "node scripts/neutrino-hlg.cjs --prepare",
-    "test:desktop-launcher": "node tests/desktop-launcher.cjs"
+    "test:desktop-launcher": "node tests/desktop-launcher.cjs",
+    "test:autostart": "dotnet run --project tests/HLG.AutoStart"
   },
   "devDependencies": {
     "playwright-core": "1.54.1"
