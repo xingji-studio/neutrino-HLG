@@ -15,6 +15,11 @@ static class HostApplication
         builder.Logging.ClearProviders();
         builder.Logging.AddProvider(log);
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+        builder.Services.AddHttpForwarder();
+        builder.Services.AddSingleton(log);
+        builder.Services.AddSingleton(_ => new VsCodeService(Path.Combine(NeutrinoPaths.Home, "hlg", "vscode"), log));
+        builder.Services.AddHostedService(provider => provider.GetRequiredService<VsCodeService>());
+        builder.Services.AddSingleton<VsCodeProxy>();
         var app = builder.Build();
         // Port 8768 only serves the public certificate and installation guide;
         // all application routes, credentials, and WebSockets require HTTPS.
@@ -23,6 +28,7 @@ static class HostApplication
         app.Use((HttpContext context, RequestDelegate next) => pairing.Handle(context, next));
         app.UseDefaultFiles();
         app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache" });
+        VsCodeProxy.Map(app);
         app.MapGet("/api/terminal/shells", () => Results.Ok(TerminalHost.Shells().Select(s => new { s.Id, s.Name })));
         WebSocketEndpoints.Map(app, "/api/terminal/connect", TerminalHost.Handle);
         app.MapGet("/api/windows", () => Results.Ok(WindowCatalog.List()));

@@ -18,7 +18,7 @@ sealed class DeviceConnections
         long lastSeenTicks = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
         public DateTimeOffset LastSeen { get => new(Interlocked.Read(ref lastSeenTicks), TimeSpan.Zero); set => Interlocked.Exchange(ref lastSeenTicks, value.UtcDateTime.Ticks); }
     }
-    public record Device(string Id, string Name, string Address, string Browser, DateTimeOffset ConnectedAt, bool Trusted, bool Online, bool Screen, bool Terminal, bool Blocked);
+    public record Device(string Id, string Name, string Address, string Browser, DateTimeOffset ConnectedAt, bool Trusted, bool Online, bool Screen, bool Terminal, bool Blocked, bool Editor = false);
     readonly ConcurrentDictionary<string, Session> sessions = new(StringComparer.Ordinal);
     readonly ConcurrentDictionary<string, Session> blocked = new(StringComparer.Ordinal);
     readonly object gate = new();
@@ -48,11 +48,11 @@ sealed class DeviceConnections
         return new Release(() => { session.Sockets.TryRemove(id, out _); if (kind == "presence") log?.Invoke("设备断开：" + session.Name + " " + session.Address); });
     }
     public IReadOnlyList<Device> List() {
-        var active = sessions.Values.Where(s => s.Sockets.Values.Any(x => x.Kind == "presence" || x.Kind == "screen" || x.Kind == "terminal"));
+        var active = sessions.Values.Where(s => s.Sockets.Values.Any(x => x.Kind is "presence" or "screen" or "terminal" or "vscode"));
         var groups = active.GroupBy(s => s.TrustedId ?? s.Id, StringComparer.Ordinal).Select(g => {
             var s = g.OrderByDescending(x => x.LastSeen).First();
             var kinds = g.SelectMany(x => x.Sockets.Values.Select(v => v.Kind)).ToArray();
-            return new Device(s.TrustedId ?? s.Id, s.Name, s.Address, s.Browser, g.Min(x => x.ConnectedAt), s.TrustedId is not null, true, kinds.Contains("screen"), kinds.Contains("terminal"), false);
+            return new Device(s.TrustedId ?? s.Id, s.Name, s.Address, s.Browser, g.Min(x => x.ConnectedAt), s.TrustedId is not null, true, kinds.Contains("screen"), kinds.Contains("terminal"), false, kinds.Contains("vscode"));
         });
         var paused = blocked.Select(kv => new Device(kv.Key, kv.Value.Name, kv.Value.Address, kv.Value.Browser, kv.Value.ConnectedAt, true, false, false, false, true));
         return groups.Concat(paused).OrderByDescending(d => d.Online).ThenBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();

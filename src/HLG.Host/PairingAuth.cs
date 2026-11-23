@@ -39,7 +39,7 @@ sealed class PairingAuth
         if (context.Request.Method is not "GET" and not "HEAD" && !SameOrigin(context)) { context.Response.StatusCode = 403; return; }
         if (context.WebSockets.IsWebSocketRequest && !SameOrigin(context)) { context.Response.StatusCode = 403; return; }
         devices.Update(session, context); context.Items[SessionKey] = session;
-        var kind = path == "/api/presence/connect" ? "presence" : path == "/api/screen/connect" || path == "/api/screen/secure/connect" ? "screen" : path == "/api/terminal/connect" ? "terminal" : "";
+        var kind = path == "/api/presence/connect" ? "presence" : path == "/api/screen/connect" || path == "/api/screen/secure/connect" ? "screen" : path == "/api/terminal/connect" ? "terminal" : path.StartsWithSegments("/api/vscode/web") ? "vscode" : "";
         using var tracked = context.WebSockets.IsWebSocketRequest && kind.Length > 0 ? devices.Track(session, context, kind) : null;
         if (context.WebSockets.IsWebSocketRequest && kind.Length > 0 && tracked is null) { context.Response.StatusCode = 401; return; }
         await next(context);

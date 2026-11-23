@@ -143,7 +143,7 @@ class DashboardForm : Form
     void RefreshDevices() {
         var current = devices.List(); var pending = pairing.PendingApprovals();
         deviceCount.Text = current.Count(d => d.Online) + " 台设备在线" + (pending.Count > 0 ? "  ·  " + pending.Count + " 项信任申请" : "");
-        var next = string.Join("|", current.Select(d => $"{d.Id},{d.Name},{d.Address},{d.Browser},{d.Trusted},{d.Online},{d.Screen},{d.Terminal},{d.Blocked}")) + ";" + string.Join("|", pending.Select(p => $"{p.Id},{p.Name},{p.Address},{p.Browser}"));
+        var next = string.Join("|", current.Select(d => $"{d.Id},{d.Name},{d.Address},{d.Browser},{d.Trusted},{d.Online},{d.Screen},{d.Terminal},{d.Blocked},{d.Editor}")) + ";" + string.Join("|", pending.Select(p => $"{p.Id},{p.Name},{p.Address},{p.Browser}"));
         if (signature == next && deviceList.Controls.Count > 0) return;
         signature = next; deviceList.SuspendLayout(); foreach (Control c in deviceList.Controls.Cast<Control>().ToArray()) c.Dispose(); deviceList.Controls.Clear();
         if (current.Count == 0 && pending.Count == 0) { var empty = Label("暂无连接设备\n\n手机访问左侧地址并完成配对后，将显示在这里。", 10, color: Muted); empty.Width = Math.Max(200, deviceList.ClientSize.Width - 20); empty.Height = 90; deviceList.Controls.Add(empty); }
@@ -160,7 +160,7 @@ class DashboardForm : Form
         foreach (var item in current) {
             var card = new Panel { Height = 108, Width = Math.Max(200, deviceList.ClientSize.Width - 24), Margin = new Padding(0, 0, 0, 9), BackColor = ColorTranslator.FromHtml("#293134") };
             var name = Label(item.Name + (item.Trusted ? "  ·  已信任" : ""), 11, FontStyle.Bold); name.SetBounds(14, 10, Math.Max(140, card.Width - 28), 25); name.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;
-            var status = item.Blocked ? "已断开 · 等待允许重连" : (item.Screen ? "远程画面" : item.Terminal ? "终端" : "在线");
+            var status = item.Blocked ? "已断开 · 等待允许重连" : (item.Screen ? "远程画面" : item.Terminal ? "终端" : item.Editor ? "VS Code 网页" : "在线");
             var info = Label(item.Address + "  ·  " + item.Browser + "  ·  " + status + "  ·  " + item.ConnectedAt.ToLocalTime().ToString("HH:mm") + " 连接", 9, color: Muted); info.SetBounds(14, 36, Math.Max(140, card.Width - 28), 23); info.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;
             var actions = new FlowLayoutPanel { Left = 14, Top = 65, Width = Math.Max(180, card.Width - 28), Height = 36, BackColor = card.BackColor, WrapContents = false, Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right };
             var action = Button(item.Blocked ? "允许重连" : "断开连接"); action.Height = 30;

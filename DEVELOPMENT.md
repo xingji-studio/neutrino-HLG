@@ -47,6 +47,14 @@ npm 包安装时会准备终端资源、使用本机 .NET 10 SDK 在后台构建
 
 当前文件浏览列出管理员进程可见的驱动器和目录；普通用户映射的网络驱动器还没有实现辅助进程。长按文件或文件夹可复制、剪切、粘贴、复制路径，文件还可下载；空目录也可通过目录顶部的按钮粘贴。文件复制和剪切只在当前浏览器标签页记录来源，粘贴时才操作电脑上的文件，刷新页面后仍可使用；剪切成功后会清除记录。复制路径则写入手机系统剪切板，如果浏览器限制自动复制，会显示可手动选择的路径。同目录复制自动生成“副本”，其他同名目标不会覆盖。为避免循环，复制或跨磁盘剪切时暂不遍历目录链接；跨磁盘剪切如在完成前遇到源文件变化或权限问题，会提示检查源目录和目标目录。
 
+长按文件夹选择“在 VS Code 打开”，HLG 会打开该目录的电脑端 VS Code，并在手机显示官方 `code serve-web` 工作台。需要先安装支持 `serve-web` 的官方 Windows 版 VS Code；HLG 会检测常见安装目录、PATH 和 App Paths，自定义安装可将 `HLG_VSCODE_PATH` 设置为 `Code.exe` 的绝对路径。首次使用需要在手机同意 Microsoft VS Code Server 许可条款，并由电脑联网下载与已安装 VS Code 相同 commit 的官方网页组件；下载可能耗时数分钟，准备过程最多等待二十分钟，可返回后从“当前画面”重新进入。若官方 CLI 无法下载，请检查电脑网络与 `HTTPS_PROXY` / `ALL_PROXY` 等代理配置；未配置这些变量时会尝试沿用 Windows 系统代理。该功能独立于 Neutrino 本机 API。
+
+“当前画面”中的 `VS Code 网页 · 文件夹名称` 是独立入口，电脑端 VS Code 窗口仍照常显示。网页使用 HLG 现有 HTTPS 地址及配对/信任机制，无需开放额外端口；内部服务只监听随机的回环端口。多个文件夹分别拥有网页服务和配置，同一目录复用已有服务。手机返回会回到进入前的文件目录或当前画面列表，关闭页面不会主动停止服务。长按网页入口可停止它并移除入口，操作前应先保存网页中的编辑。电脑端设备列表可显示“VS Code 网页”状态，断开设备会中止其编辑器 WebSocket；从托盘退出 HLG 会清理网页服务及其子进程，电脑端 VS Code 窗口独立保留。HLG 重启后恢复入口列表，点击入口时重新启动服务。
+
+这里使用官方网页编辑器及本机后端，桌面端与网页端读写同一文件夹；它们不共享未保存文档、撤销记录、终端、调试器及扩展进程，网页端使用独立配置和扩展目录。扩展兼容性和工作区信任由官方 VS Code 管理。官方服务可能在没有客户端连接约一小时后回收后端及其终端/调试进程，因此需要长期运行的任务应使用 HLG 的任务系统或其他独立进程。窄屏界面保持官方工作台布局，可在编辑器内折叠侧栏；手机输入法和剪切板仍受浏览器支持及权限影响。
+
+VS Code 网页组件缓存、入口记录、首次许可确认、每个目录的配置及连接凭据保存在 `~/.neutrino/hlg/vscode/`，设置 `NEUTRINO_HOME` 时跟随该目录；服务日志写入 HLG 原有日志文件。入口记录只保存标识、路径和最近使用时间，不保存可复用的端口或进程号。每次启动生成新的内部连接凭据，日志隐藏凭据。
+
 应用清单合并开始菜单快捷方式与 Windows AppsFolder（包括商店应用），两种来源的同名入口会合并；没有注册到这些位置的便携软件无法自动发现。图标由 Windows 解析，无法读取时显示占位图。前四个内置功能固定，其余应用按通过 HLG 发出启动请求的次数排序，次数相同时按最近使用时间排序；从电脑或其他工具启动的次数不在统计内。计数存于 `~/.neutrino/hlg/app-usage.json`，配置了 `NEUTRINO_HOME` 时存于该目录的 `hlg/app-usage.json`。点击会启动应用并尝试匹配和打开它的窗口画面；无法确认窗口时需要手动选择。
 
 HLG 任务创建后在 `~/.neutrino/hlg/session/<任务ID>` 写入任务信息，并在主机运行时每两秒保存一次 neutrino 的活动会话快照。任务详情可继续发送消息，Neutrino 重启后会尝试通过原会话 ID 恢复；缺少会话 ID 的旧任务无法自动恢复。Neutrino 需要独立保持运行，手机关闭页面不会停止任务。Neutrino 支持一条排队消息，已有消息排队时请等待后再发送；快照并非完整事件归档。完整已安装应用清单、专业模式等均待实现。
@@ -56,3 +64,5 @@ HLG 任务创建后在 `~/.neutrino/hlg/session/<任务ID>` 写入任务信息�
 从源码仓库运行测试：在 Windows 上执行 `dotnet run --project tests/HLG.TerminalSmoke` 可验证 ConPTY、窗口截图及 WebSocket 行为，`dotnet run --project tests/HLG.LockScreen` 可验证密码加密、进程间管道限制和 HTTPS 边界，`npm run test:https` 可验证自动证书、配对、HTTP/1.1 和 HTTP/2 的 WSS 连接及安装页面隔离，`npm run test:https-browser` 还使用 Edge 验证 HTTPS 配对、设备在线和远控画面，`dotnet run --project tests/HLG.Conversations` 可验证会话恢复和排队等行为，`dotnet run --project tests/HLG.Windows` 可验证应用发现、图标和排序，`dotnet run --project tests/HLG.Network` 可验证网络监听，`dotnet run --project tests/HLG.Pairing` 可验证配对和信任恢复，`dotnet run --project tests/HLG.Desktop` 可验证桌面界面和日志，`npm run test:files` 可验证文件操作和下载，`npm run test:desktop-launcher` 可验证桌面启动器；`npm run test:remote-ui`、`npm run test:file-browser-ui`、`npm run test:model-ui`、`npm run test:conversation-ui`、`npm run test:app-list-ui`、`npm run test:back-ui` 和 `npm run test:trust-ui` 使用已安装的 Microsoft Edge 验证手机界面。可用 `HLG_TEST_BROWSER` 指定其他兼容的 Chromium 浏览器路径。上述自动测试不会安装系统服务、修改系统信任库或锁定电脑，不能替代真实手机和锁屏测试。
 
 `npm run test:autostart` 会检查自启配置和程序副本，并创建、删除一个临时的低权限计划任务；以管理员身份运行时还会检查受保护的最高权限任务注册。此测试不重启电脑。
+
+`npm run test:vscode` 检查许可、目录复用、入口恢复、HTTPS 转发、Cookie 隔离、HTTP/1.1 和 HTTP/2 WebSocket、设备断开和进程清理；`npm run test:vscode-ui` 检查手机文件菜单、许可取消、加载重试、返回手势和网页入口。`npm run test:vscode-real` 会使用本机官方 VS Code 和 Edge，在测试输出目录下载网页组件并验证实际工作台、文件保存和重新进入；不打开可见的电脑端 VS Code 窗口，不使用用户原有 VS Code 配置，首次运行需要联网。测试缓存、截图和临时文件均保存在已忽略的 `tests/HLG.VsCode/bin/` 下。

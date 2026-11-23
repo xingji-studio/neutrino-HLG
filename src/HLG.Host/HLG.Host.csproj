@@ -10,6 +10,7 @@
     <DefaultItemExcludesInProjectFolder>$(DefaultItemExcludesInProjectFolder);obj/**;bin/**</DefaultItemExcludesInProjectFolder>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.3.0" />
     <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Using Include="System.IO" />
     <Using Include="System.Net.Http" />

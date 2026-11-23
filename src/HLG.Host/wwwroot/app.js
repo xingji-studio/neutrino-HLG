@@ -36,7 +36,7 @@ async function api(path, options = {}) {
   if(response.status===401&&path!=='/pair'&&await restoreTrust())response=await fetch('/api'+path,request);
   if (response.status === 401) { if(path==='/pair')throw new Error('配对码错误');$('pair').classList.remove('hidden'); throw new Error('请先配对'); }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || data.detail || `请求失败 (${response.status})`);
+  if (!response.ok) { const error=new Error(data.error || data.detail || `请求失败 (${response.status})`);error.status=response.status;error.data=data;throw error; }
   return data;
 }
 function element(tag, className, text) { const el = document.createElement(tag); if (className) el.className = className; if (text != null) el.textContent = text; return el; }
@@ -55,8 +55,8 @@ function leaveTaskDetail() {
   if(detailPrevious){const i=state.models.findIndex(m=>m.provider===detailPrevious.provider&&m.name===detailPrevious.model);if(i>=0){$('model').value=String(i);updateLevels(detailPrevious.intensity);}$('mode').value=detailPrevious.mode;modelSelectionChanged=detailPrevious.changed;detailPrevious=null;}
   collapseComposer();
 }
-function openPage(title) { filesGeneration++;closeFileMenu();closeFileOpenMenu();if(title!=='选择应用程序')fileExecutableTarget=null;if(title!=='任务详情')leaveTaskDetail(); closeTerminal(); state.view = title; const picker=title==='选择工作目录';$('back').setAttribute('aria-label',picker?'关闭选择目录':'返回');$('back').replaceChildren(arrowIcon(picker?'close':'left'));$('composer').classList.toggle('hidden', title==='终端'); $('home').classList.add('hidden'); $('page').classList.remove('hidden'); $('toolbar').classList.remove('hidden'); $('page-title').textContent = title; $('title').classList.add('hidden'); $('page').replaceChildren(); }
-function home() { filesGeneration++;closeFileMenu();closeFileOpenMenu();fileExecutableTarget=null;leaveTaskDetail();closeTerminal(); state.view = 'home'; state.picker = false; $('composer').classList.remove('hidden'); $('home').classList.remove('hidden'); $('page').classList.add('hidden'); $('toolbar').classList.add('hidden'); $('title').classList.remove('hidden'); void loadApps(); }
+function openPage(title) { window.hlgVsCode?.leave();filesGeneration++;closeFileMenu();closeFileOpenMenu();if(title!=='选择应用程序')fileExecutableTarget=null;if(title!=='任务详情')leaveTaskDetail(); closeTerminal(); state.view = title; const picker=title==='选择工作目录';$('back').setAttribute('aria-label',picker?'关闭选择目录':'返回');$('back').replaceChildren(arrowIcon(picker?'close':'left'));$('composer').classList.toggle('hidden', title==='终端'||title==='VS Code 网页'); $('home').classList.add('hidden'); $('page').classList.remove('hidden'); $('toolbar').classList.remove('hidden'); $('page-title').textContent = title; $('title').classList.add('hidden'); $('page').replaceChildren(); }
+function home() { window.hlgVsCode?.leave();filesGeneration++;closeFileMenu();closeFileOpenMenu();fileExecutableTarget=null;leaveTaskDetail();closeTerminal(); state.view = 'home'; state.picker = false; $('composer').classList.remove('hidden'); $('home').classList.remove('hidden'); $('page').classList.add('hidden'); $('toolbar').classList.add('hidden'); $('title').classList.remove('hidden'); void loadApps(); }
 function row(icon, title, subtitle, action) { const b = element('button','row'), iconEl=element('span','row-icon');if(icon instanceof Node)iconEl.append(icon);else if(icon==='arrow-up')iconEl.append(arrowIcon('up'));else iconEl.textContent=icon;b.append(iconEl); const info=element('span','row-text'); info.append(element('strong','',title),element('small','',subtitle || '')); b.append(info,arrowIcon('chevron','row-arrow')); b.addEventListener('click',action); $('page').append(b); return b; }
 function empty(text) { $('page').append(element('div','empty',text)); }
 const builtin = [{name:'文件浏览', icon:'▱', action:()=>files(null)}, {name:'终端', icon:'⌘', action:terminal}, {name:'任务列表', icon:'☷', action:tasks}, {name:'当前画面', icon:'▣', action:windows}];
@@ -77,16 +77,18 @@ async function launch(app) { try { const previous=await api('/windows');const ol
 function unavailable(name) { openPage(name); empty('此功能正在开发中。'); }
 async function windows(showLockedList = false) {
   openPage('当前画面');
+  const generation=filesGeneration;
   try {
-    const status=await api('/status');
-    if(state.view!=='当前画面')return;
+    const [status,editors]=await Promise.all([api('/status'),api('/vscode/sessions').catch(()=>[])]);
+    if(state.view!=='当前画面'||generation!==filesGeneration)return;
+    const editorCount=window.hlgVsCode?.renderEntries(editors)||0;
     if(status.locked===true){
       if(!status.unlockAvailable){empty('电脑已锁定。请先在电脑端设置中启用远程解锁。');return;}
-      if(showLockedList!==true){openRemote(null,{secure:true});return;}
+      if(showLockedList!==true&&!editorCount){openRemote(null,{secure:true});return;}
       row('▣','登录画面','电脑已锁定',()=>openRemote(null,{secure:true}));return;
     }
     const list=await api('/windows');
-    if(state.view!=='当前画面')return;
+    if(state.view!=='当前画面'||generation!==filesGeneration)return;
     row('▣','全部画面','查看所有显示器',()=>openRemote(null));
     if(!list.length){empty('没有找到当前任务栏窗口。');return;}
     for(const item of list){
@@ -146,6 +148,7 @@ function showFileMenu(item,directory){
   fileMenuPointerStarted=false;fileMenuTarget={...item,currentDirectory:directory};$('file-menu-name').textContent=item.name;
   $('file-menu-copy-path').textContent=item.directory?'复制文件夹路径':'复制文件路径';
   const download=$('file-menu-download');download.classList.toggle('hidden',item.directory);
+  $('file-menu-vscode').classList.toggle('hidden',!item.directory);
   if(!item.directory){download.href='/api/fs/download?path='+encodeURIComponent(item.path);download.download=item.name;}
   updateFilePasteControls();$('file-menu').classList.remove('hidden');
 }
@@ -402,6 +405,7 @@ $('prompt').addEventListener('focus',()=>{$('composer').classList.add('expanded'
 function navigateBack() {
   if(!$('trust-dialog').classList.contains('hidden')){if(!$('trust-decline').disabled)declineTrust();return;}
   if(!$('pair').classList.contains('hidden')){toast('请先完成配对');return;}
+  if(window.hlgVsCode?.back())return;
   if(!$('file-copy-dialog').classList.contains('hidden')){$('file-copy-dialog').classList.add('hidden');return;}
   if(!$('file-menu').classList.contains('hidden')){closeFileMenu();return;}
   if(!$('file-open-menu').classList.contains('hidden')){closeFileOpenMenu();return;}

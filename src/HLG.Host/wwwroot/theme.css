@@ -135,3 +135,28 @@ body.conversation-mode #toolbar { margin-top: 0; }
 .trust-decline { width: 100%; border: 1px solid #4a5151; border-radius: 13px; background: transparent; color: #dce2e1; padding: 13px; font-weight: 600; }
 #trust-approval { margin-top: 10px; }
 .trust-actions button:disabled { opacity: .55; cursor: default; }
+
+body.vscode-mode { overflow: hidden; }
+body.vscode-mode #app { display: none; }
+.vscode-view { position: fixed; inset: 0; z-index: 8; display: flex; flex-direction: column; background: #1f1f1f; overflow: hidden; padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.vscode-toolbar { flex: none; display: flex; align-items: center; gap: 10px; min-height: 50px; padding: calc(6px + env(safe-area-inset-top)) 10px 6px; border-bottom: 1px solid #373d40; background: #202629; }
+.vscode-toolbar button { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border: 1px solid #3c494e; border-radius: 12px; background: #2b3539; color: #e5eff2; }
+.vscode-toolbar button:disabled { opacity: .4; }
+.vscode-heading { flex: 1; min-width: 0; }
+.vscode-heading strong, .vscode-heading span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.vscode-heading strong { font-size: 12px; font-weight: 550; }
+.vscode-heading span { color: #a0afb5; font-size: 10px; margin-top: 3px; }
+.vscode-frame-host { flex: 1; min-height: 0; display: flex; }
+.vscode-frame-host iframe { width: 100%; height: 100%; border: 0; background: #1f1f1f; }
+.vscode-loading { position: absolute; inset: calc(52px + env(safe-area-inset-top)) 0 0; display: grid; place-items: center; padding: 25px; background: #191e20; }
+.vscode-loading-card { width: min(100%, 360px); text-align: center; }
+.vscode-loading h2 { color: #e5eef0; font-size: 16px; font-weight: 550; line-height: 1.5; }
+.vscode-loading p { color: #99a9ae; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.vscode-loading .primary { margin-top: 16px; }
+.vscode-spinner { width: 28px; height: 28px; margin: 0 auto 24px; border: 2px solid #36434a; border-top-color: var(--theme); border-radius: 50%; animation: vscode-spin 1s linear infinite; }
+.vscode-loading.is-error .vscode-spinner { display: none; }
+.vscode-badge { flex: none; color: var(--theme); background: #45acd718; border: 1px solid #45acd742; border-radius: 6px; padding: 3px 5px; font-size: 9px; }
+.vscode-icon { width: 25px; height: 25px; fill: var(--theme); }
+#vscode-license a { color: var(--theme); }
+@keyframes vscode-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .vscode-spinner { animation: none; } }
